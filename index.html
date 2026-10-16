@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>銀河英語闖關</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="starfield" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <button id="btn-home" class="icon-btn" title="回首頁">🏠</button>
+    <div id="top-title">銀河英語闖關</div>
+    <div class="top-right">
+      <span id="timer" class="timer hidden">0:00</span>
+      <button id="btn-sound" class="icon-btn" title="聲音開關">🔊</button>
+    </div>
+  </header>
+
+  <main id="app"></main>
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="js/data.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>

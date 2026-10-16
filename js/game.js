@@ -1,0 +1,617 @@
+(function () {
+  'use strict';
+
+  const DATA = window.GAME_DATA;
+  const PER_LEVEL = 5;               // 每關題數
+  const SAVE_KEY = 'galaxyEnglish.v1';
+  const MODES = {
+    vocab: { label: '單字星球', icon: '🚀' },
+    sentence: { label: '句型星球', icon: '🛸' },
+  };
+  const CHEERS = ['Great!', 'Super!', 'Awesome!', 'Good job!', 'Wonderful!', 'Excellent!'];
+  const HELLOS = ['Hello!', "Let's go!", 'You can do it!', 'Hi, friend!', 'Have fun!'];
+
+  const $ = (s) => document.querySelector(s);
+  const app = $('#app');
+
+  // ---------- 小工具 ----------
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const levels = (mode) => DATA[mode];
+
+  // ---------- 進度記憶 (localStorage) ----------
+  function defaultSave() {
+    return { vocab: { unlocked: 1, stars: {} }, sentence: { unlocked: 1, stars: {} }, last: null };
+  }
+  function loadSave() {
+    try {
+      const s = JSON.parse(localStorage.getItem(SAVE_KEY));
+      if (s && s.vocab && s.sentence) return s;
+    } catch (e) { /* 讀不到就用新的 */ }
+    return defaultSave();
+  }
+  function persist() {
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* 無痕模式可能不能存 */ }
+  }
+  let save = loadSave();
+  let soundOn = true;
+  try { soundOn = localStorage.getItem(SAVE_KEY + '.sound') !== 'off'; } catch (e) { /* ignore */ }
+
+  // ---------- 語音 (瀏覽器內建朗讀) ----------
+  let voices = [];
+  const hasTTS = 'speechSynthesis' in window;
+  function loadVoices() { voices = speechSynthesis.getVoices(); }
+  if (hasTTS) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
+
+  function pickVoice(lang) {
+    const prefs = lang.startsWith('en') ? ['en-US', 'en-GB', 'en'] : ['zh-TW', 'zh-HK', 'zh-CN', 'zh'];
+    for (const p of prefs) {
+      const list = voices.filter((v) => v.lang.replace('_', '-').startsWith(p));
+      if (list.length) return list.find((v) => /Google|Natural|Online/i.test(v.name)) || list[0];
+    }
+    return null;
+  }
+  function speak(text, lang = 'en-US', rate = 0.8) {
+    if (!soundOn || !hasTTS) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = lang;
+    u.rate = rate;
+    const v = pickVoice(lang);
+    if (v) u.voice = v;
+    speechSynthesis.speak(u);
+  }
+
+  // ---------- 音效 ----------
+  let actx = null;
+  function beep(freqs, dur = 0.12, type = 'sine') {
+    if (!soundOn) return;
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      let t = actx.currentTime;
+      freqs.forEach((f) => {
+        const o = actx.createOscillator();
+        const g = actx.createGain();
+        o.type = type;
+        o.frequency.value = f;
+        g.gain.setValueAtTime(0.12, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+        o.connect(g).connect(actx.destination);
+        o.start(t);
+        o.stop(t + dur);
+        t += dur * 0.8;
+      });
+    } catch (e) { /* 不支援就安靜 */ }
+  }
+  const sfx = {
+    tap: () => beep([660], 0.06, 'triangle'),
+    good: () => beep([523, 659, 784], 0.12),
+    bad: () => beep([240, 180], 0.15, 'square'),
+    win: () => beep([523, 659, 784, 1046], 0.16),
+  };
+
+  // ---------- 計時器 (像 NYT Crossword) ----------
+  const timerEl = $('#timer');
+  let timerId = null;
+  let startTime = 0;
+  const fmtTime = (ms) => {
+    const s = Math.floor(ms / 1000);
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  };
+  function startTimer() {
+    stopTimer();
+    startTime = Date.now();
+    timerEl.textContent = '0:00';
+    timerEl.classList.remove('hidden');
+    timerId = setInterval(() => { timerEl.textContent = fmtTime(Date.now() - startTime); }, 500);
+  }
+  function stopTimer() {
+    clearInterval(timerId);
+    timerId = null;
+    timerEl.classList.add('hidden');
+  }
+
+  // ---------- 提示訊息 ----------
+  const toastEl = $('#toast');
+  let toastT = null;
+  function toast(msg, ms = 1100) {
+    toastEl.textContent = msg;
+    toastEl.classList.remove('hidden');
+    toastEl.style.animation = 'none';
+    void toastEl.offsetWidth;
+    toastEl.style.animation = '';
+    clearTimeout(toastT);
+    toastT = setTimeout(() => toastEl.classList.add('hidden'), ms);
+  }
+
+  function bounceEl(el) {
+    el.classList.remove('bounce');
+    void el.offsetWidth;
+    el.classList.add('bounce');
+  }
+
+  function setTitle(t) { $('#top-title').textContent = t; }
+
+  // ---------- 遊戲狀態 ----------
+  // pending 用來取消「答對後自動跳下一題」的計時，避免離開關卡後還跳畫面
+  const game = { mode: null, level: 0, items: [], idx: 0, mistakes: 0, busy: false, pending: null, spell: null };
+  function later(fn, ms) {
+    clearTimeout(game.pending);
+    game.pending = setTimeout(fn, ms);
+  }
+  function leaveLevel() {
+    clearTimeout(game.pending);
+    game.busy = false;
+    stopTimer();
+    if (hasTTS) speechSynthesis.cancel();
+  }
+
+  // =====================================================
+  // 首頁
+  // =====================================================
+  function renderHome() {
+    leaveLevel();
+    setTitle('銀河英語闖關');
+    const last = save.last;
+    let cont = '';
+    if (last && levels(last.mode)) {
+      const lv = Math.min(save[last.mode].unlocked, levels(last.mode).length);
+      cont = `<button class="big-btn continue" data-action="continue">▶ 繼續闖關：${MODES[last.mode].label} 第 ${lv} 關</button>`;
+    }
+    const prog = (m) => {
+      const total = levels(m).length;
+      const done = Object.keys(save[m].stars).length;
+      return `已過 ${done} / ${total} 關`;
+    };
+    app.innerHTML = `
+      <section class="home">
+        <button class="sticker s1" data-action="sticker">🪐</button>
+        <button class="sticker s2" data-action="sticker">⭐</button>
+        <button class="sticker s3" data-action="sticker">👽</button>
+        <button class="sticker s4" data-action="sticker">🌙</button>
+        <button class="mascot" data-action="sticker" title="點我打招呼">🧑‍🚀</button>
+        <h1>銀河英語闖關</h1>
+        <p class="sub">點點看可愛的圖示，選一顆星球出發吧！</p>
+        ${cont}
+        <div class="mode-grid">
+          <button class="mode-card vocab" data-action="map" data-mode="vocab">
+            <span class="mode-icon">🚀</span><b>單字星球</b>
+            <small>聽發音・諧音記憶・拼字</small>
+            <span class="mode-prog">${prog('vocab')}</span>
+          </button>
+          <button class="mode-card sentence" data-action="map" data-mode="sentence">
+            <span class="mode-icon">🛸</span><b>句型星球</b>
+            <small>聽句子・選出正確回答</small>
+            <span class="mode-prog">${prog('sentence')}</span>
+          </button>
+        </div>
+        <button class="reset-link" data-action="reset">清除闖關紀錄</button>
+      </section>`;
+  }
+
+  // =====================================================
+  // 關卡地圖
+  // =====================================================
+  function renderMap(mode) {
+    leaveLevel();
+    setTitle(MODES[mode].icon + ' ' + MODES[mode].label);
+    const s = save[mode];
+    const cards = levels(mode).map((lv, i) => {
+      const n = i + 1;
+      const locked = n > s.unlocked;
+      const stars = s.stars[n] || 0;
+      const current = n === s.unlocked && !s.stars[n];
+      return `
+        <button class="planet ${locked ? 'locked' : ''} ${current ? 'current' : ''}"
+                data-action="${locked ? 'locked' : 'start'}" data-mode="${mode}" data-level="${n}">
+          <span class="orb" style="background:${lv.color}">${lv.icon}</span>
+          <span class="lv">第 ${n} 關</span>
+          <span class="nm">${esc(lv.name)}</span>
+          <span class="st">${locked ? '' : '★'.repeat(stars) + '☆'.repeat(3 - stars)}</span>
+        </button>`;
+    }).join('');
+    app.innerHTML = `
+      <div class="map-head">
+        <button class="tab ${mode === 'vocab' ? 'on' : ''}" data-action="map" data-mode="vocab">🚀 單字</button>
+        <button class="tab ${mode === 'sentence' ? 'on' : ''}" data-action="map" data-mode="sentence">🛸 句型</button>
+      </div>
+      <div class="planet-grid">${cards}</div>`;
+  }
+
+  // =====================================================
+  // 開始關卡：每次從題庫隨機抽題，所以每次內容都不一樣
+  // =====================================================
+  function startLevel(mode, n) {
+    leaveLevel();
+    const lv = levels(mode)[n - 1];
+    const pool = mode === 'vocab' ? lv.words : lv.items;
+    Object.assign(game, {
+      mode, level: n, idx: 0, mistakes: 0, busy: false,
+      items: shuffle(pool).slice(0, PER_LEVEL),
+    });
+    save.last = { mode, level: n };
+    persist();
+    setTitle(`第 ${n} 關・${lv.name}`);
+    startTimer();
+    showQuestion();
+  }
+
+  function dotsHtml() {
+    return '<div class="dots">' + game.items.map((_, i) =>
+      `<span class="dot ${i < game.idx ? 'done' : i === game.idx ? 'now' : ''}"></span>`).join('') + '</div>';
+  }
+
+  function showQuestion() {
+    if (game.idx >= game.items.length) return finishLevel();
+    if (game.mode === 'vocab') showWordCard();
+    else showSentence();
+  }
+
+  function nextQuestion() {
+    game.idx++;
+    game.busy = false;
+    showQuestion();
+  }
+
+  // =====================================================
+  // 單字：1. 學習卡（念一次 + 諧音）
+  // =====================================================
+  function curWord() {
+    const [en, zh, homo, icon] = game.items[game.idx];
+    return { en, zh, homo, icon };
+  }
+
+  function showWordCard() {
+    const w = curWord();
+    const color = levels('vocab')[game.level - 1].color;
+    app.innerHTML = `
+      ${dotsHtml()}
+      <div class="panel word-card" style="--accent:${color}">
+        <button class="emoji-btn" data-action="say-word" title="點我聽發音">${w.icon}</button>
+        <div class="word-en">${esc(w.en)}</div>
+        <div class="word-zh">${esc(w.zh)}</div>
+        <div class="homo">
+          <span class="tag">諧音記憶</span>
+          <b>${esc(w.en)}</b> ≈ <b>${esc(w.homo)}</b>
+          <button class="mini-btn" data-action="say-homo">🗣️ 聽諧音</button>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="big-btn blue" data-action="say-word">🔊 再聽一次</button>
+        <button class="big-btn" data-action="to-spell">✏️ 開始拼字</button>
+      </div>`;
+    setTimeout(() => speak(w.en), 350);
+  }
+
+  // =====================================================
+  // 單字：2. 拼字（Crossword 格子 + 打散字母）
+  // =====================================================
+  const ALPHABET = 'abcdefghijklmnopqrstuvwxyz';
+
+  function setupSpell() {
+    const w = curWord();
+    const answer = w.en.toLowerCase();
+    const cells = Array(answer.length).fill(null);
+    cells[0] = { ch: answer[0], locked: true }; // 開頭字母先給
+    const letters = answer.slice(1).split('');
+    // 第 4 關起多 1 個干擾字母，第 8 關起多 2 個
+    const decoys = game.level >= 8 ? 2 : game.level >= 4 ? 1 : 0;
+    for (let i = 0; i < decoys; i++) letters.push(pick(ALPHABET.split('')));
+    let order = shuffle(letters);
+    const correct = answer.slice(1);
+    for (let t = 0; t < 10 && letters.length > 1 && order.join('').startsWith(correct); t++) order = shuffle(letters);
+    game.spell = {
+      answer, cells,
+      tiles: order.map((ch, id) => ({ id, ch, used: false })),
+    };
+  }
+
+  function showSpell() {
+    setupSpell();
+    renderSpell();
+  }
+
+  function renderSpell(state) {
+    const w = curWord();
+    const sp = game.spell;
+    const firstEmpty = sp.cells.findIndex((c) => !c);
+    const cellsHtml = sp.cells.map((c, i) => {
+      const cls = ['cell'];
+      if (c && c.locked) cls.push(c.hint ? 'hinted' : 'locked');
+      if (state === 'ok') cls.push('ok');
+      else if (state === 'bad') cls.push('bad');
+      else if (i === firstEmpty) cls.push('active');
+      return `<button class="${cls.join(' ')}" data-action="cell" data-i="${i}">
+        ${i === 0 ? '<span class="num">1</span>' : ''}${c ? esc(c.ch) : ''}</button>`;
+    }).join('');
+    const tilesHtml = sp.tiles.map((t) =>
+      `<button class="tile ${t.used ? 'used' : ''}" data-action="tile" data-id="${t.id}">${esc(t.ch)}</button>`).join('');
+    app.innerHTML = `
+      ${dotsHtml()}
+      <div class="panel">
+        <div class="clue-bar">
+          <span class="clue-num">1A</span>
+          <span class="clue-emoji">${w.icon}</span>
+          <b>${esc(w.zh)}</b>
+          <small>${sp.answer.length} 個字母</small>
+        </div>
+        <div class="grid ${state === 'bad' ? 'shake' : ''}" style="--n:${sp.answer.length}">${cellsHtml}</div>
+        <div class="tiles">${tilesHtml}</div>
+      </div>
+      <div class="actions">
+        <button class="big-btn blue" data-action="say-word">🔊 聽發音</button>
+        <button class="big-btn pink" data-action="hint">💡 提示</button>
+        <button class="big-btn ghost" data-action="clear">↺ 重來</button>
+      </div>`;
+  }
+
+  function placeTile(id) {
+    const sp = game.spell;
+    const tile = sp.tiles.find((t) => t.id === id);
+    const slot = sp.cells.findIndex((c) => !c);
+    if (!tile || tile.used || slot < 0) return;
+    tile.used = true;
+    sp.cells[slot] = { ch: tile.ch, tileId: tile.id };
+    sfx.tap();
+    afterChange();
+  }
+
+  function removeCell(i) {
+    const sp = game.spell;
+    const c = sp.cells[i];
+    if (!c || c.locked) return;
+    sp.tiles.find((t) => t.id === c.tileId).used = false;
+    sp.cells[i] = null;
+    sfx.tap();
+    renderSpell();
+  }
+
+  function clearSpell() {
+    const sp = game.spell;
+    sp.cells.forEach((c, i) => {
+      if (c && !c.locked) {
+        sp.tiles.find((t) => t.id === c.tileId).used = false;
+        sp.cells[i] = null;
+      }
+    });
+  }
+
+  function giveHint() {
+    const sp = game.spell;
+    // 找到第一個「空的或放錯」的格子
+    const target = sp.cells.findIndex((c, k) => !c || (!c.locked && c.ch !== sp.answer[k]));
+    if (target < 0) return;
+    const need = sp.answer[target];
+    // 先把該格清空
+    const cur = sp.cells[target];
+    if (cur && !cur.locked) {
+      sp.tiles.find((t) => t.id === cur.tileId).used = false;
+      sp.cells[target] = null;
+    }
+    // 找一個沒用過的正確字母；沒有就從後面格子借回來
+    let tile = sp.tiles.find((t) => !t.used && t.ch === need);
+    if (!tile) {
+      const j = sp.cells.findIndex((c, k) => k > target && c && !c.locked && c.ch === need);
+      if (j < 0) return;
+      tile = sp.tiles.find((t) => t.id === sp.cells[j].tileId);
+      sp.cells[j] = null;
+    }
+    tile.used = true;
+    sp.cells[target] = { ch: need, tileId: tile.id, locked: true, hint: true };
+    game.mistakes++;
+    beep([880, 990], 0.08, 'triangle');
+    afterChange();
+  }
+
+  function afterChange() {
+    const sp = game.spell;
+    if (sp.cells.some((c) => !c)) return renderSpell();
+    const guess = sp.cells.map((c) => c.ch).join('');
+    if (guess === sp.answer) {
+      game.busy = true;
+      renderSpell('ok');
+      sfx.good();
+      toast(pick(CHEERS) + ' ⭐');
+      setTimeout(() => speak(curWord().en), 300);
+      later(nextQuestion, 1700);
+    } else {
+      game.mistakes++;
+      game.busy = true;
+      renderSpell('bad');
+      sfx.bad();
+      later(() => { clearSpell(); game.busy = false; renderSpell(); }, 800);
+    }
+  }
+
+  // =====================================================
+  // 句型：問句 + 三個選項（附中文）
+  // =====================================================
+  function showSentence() {
+    const [q, qzh, a, azh, wrongs] = game.items[game.idx];
+    const lv = levels('sentence')[game.level - 1];
+    const opts = shuffle([{ en: a, zh: azh, ok: true }].concat(
+      shuffle(wrongs).slice(0, 2).map(([en, zh]) => ({ en, zh, ok: false }))));
+    game.opts = opts;
+    app.innerHTML = `
+      ${dotsHtml()}
+      <div class="panel q-card">
+        <button class="q-emoji" data-action="say-q" title="點我再聽一次">${lv.icon}</button>
+        <div class="q-en">${esc(q)}</div>
+        <div class="q-zh" id="q-zh"><button class="mini-btn" data-action="show-zh">👀 看中文</button></div>
+        <div class="actions" style="margin-top:12px">
+          <button class="big-btn blue" data-action="say-q">🔊 再聽一次</button>
+        </div>
+      </div>
+      <div class="options">
+        ${opts.map((o, i) => `
+          <button class="opt" data-action="opt" data-i="${i}">
+            <span class="letter">${'ABC'[i]}</span>
+            <span class="txt"><span class="en">${esc(o.en)}</span><span class="zh">${esc(o.zh)}</span></span>
+          </button>`).join('')}
+      </div>`;
+    game.qzh = qzh;
+    setTimeout(() => speak(q), 350);
+  }
+
+  function chooseOpt(i, el) {
+    const o = game.opts[i];
+    if (o.ok) {
+      game.busy = true;
+      el.classList.add('right');
+      document.querySelectorAll('.opt').forEach((b) => { b.disabled = true; });
+      sfx.good();
+      toast(pick(CHEERS) + ' ⭐');
+      setTimeout(() => speak(o.en), 300);
+      later(nextQuestion, 2000);
+    } else {
+      game.mistakes++;
+      el.classList.add('wrong');
+      el.disabled = true;
+      sfx.bad();
+      setTimeout(() => speak('Try again!'), 200);
+    }
+  }
+
+  // =====================================================
+  // 過關結算
+  // =====================================================
+  function finishLevel() {
+    const elapsed = Date.now() - startTime;
+    stopTimer();
+    const { mode, level, mistakes } = game;
+    const stars = mistakes === 0 ? 3 : mistakes <= 2 ? 2 : 1;
+    const s = save[mode];
+    s.stars[level] = Math.max(s.stars[level] || 0, stars);
+    const total = levels(mode).length;
+    s.unlocked = Math.max(s.unlocked, Math.min(level + 1, total));
+    save.last = { mode, level: Math.min(level + 1, total) };
+    persist();
+
+    const allDone = Object.keys(s.stars).length >= total;
+    const hasNext = level < total;
+    sfx.win();
+    setTimeout(() => speak(stars === 3 ? 'Perfect! You are a star!' : 'Well done!'), 400);
+    app.innerHTML = `
+      <div class="panel result">
+        <div class="big-emoji">${allDone && !hasNext ? '🏆' : stars === 3 ? '🌟' : '🎉'}</div>
+        <h2>${allDone && !hasNext ? '全部星球都征服了！' : '過關成功！'}</h2>
+        <div class="stars">${'★'.repeat(stars)}<span class="off">${'★'.repeat(3 - stars)}</span></div>
+        <p>⏱ 用時 ${fmtTime(elapsed)}　❌ 錯誤 ${mistakes} 次</p>
+        <div class="actions">
+          <button class="big-btn ghost" style="color:var(--ink);background:#eef0ff" data-action="start" data-mode="${mode}" data-level="${level}">🔁 再玩一次</button>
+          ${hasNext ? `<button class="big-btn" data-action="start" data-mode="${mode}" data-level="${level + 1}">下一關 ➜</button>` : ''}
+          <button class="big-btn blue" data-action="map" data-mode="${mode}">🗺️ 關卡地圖</button>
+        </div>
+      </div>`;
+  }
+
+  // =====================================================
+  // 點擊事件
+  // =====================================================
+  app.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-action]');
+    if (!el) return;
+    const act = el.dataset.action;
+    switch (act) {
+      case 'sticker':
+        bounceEl(el);
+        sfx.tap();
+        speak(pick(HELLOS));
+        break;
+      case 'map':
+        sfx.tap();
+        renderMap(el.dataset.mode);
+        break;
+      case 'locked':
+        sfx.bad();
+        toast('🔒 先完成前一關喔！');
+        break;
+      case 'start':
+        sfx.tap();
+        startLevel(el.dataset.mode, Number(el.dataset.level));
+        break;
+      case 'continue': {
+        const m = save.last.mode;
+        startLevel(m, Math.min(save[m].unlocked, levels(m).length));
+        break;
+      }
+      case 'reset':
+        if (confirm('確定要清除所有闖關紀錄嗎？')) {
+          save = defaultSave();
+          persist();
+          renderHome();
+        }
+        break;
+      case 'say-word':
+        if (el.classList.contains('emoji-btn')) bounceEl(el);
+        speak(curWord().en);
+        break;
+      case 'say-homo':
+        speak(curWord().homo, 'zh-TW', 0.9);
+        break;
+      case 'to-spell':
+        sfx.tap();
+        showSpell();
+        break;
+      case 'tile':
+        if (!game.busy) placeTile(Number(el.dataset.id));
+        break;
+      case 'cell':
+        if (!game.busy) removeCell(Number(el.dataset.i));
+        break;
+      case 'hint':
+        if (!game.busy) giveHint();
+        break;
+      case 'clear':
+        if (!game.busy) { clearSpell(); renderSpell(); }
+        break;
+      case 'say-q':
+        if (el.classList.contains('q-emoji')) bounceEl(el);
+        speak(game.items[game.idx][0]);
+        break;
+      case 'show-zh':
+        $('#q-zh').textContent = game.qzh;
+        break;
+      case 'opt':
+        if (!game.busy) chooseOpt(Number(el.dataset.i), el);
+        break;
+    }
+  });
+
+  $('#btn-home').addEventListener('click', () => { sfx.tap(); renderHome(); });
+
+  const soundBtn = $('#btn-sound');
+  function syncSoundBtn() { soundBtn.textContent = soundOn ? '🔊' : '🔇'; }
+  soundBtn.addEventListener('click', () => {
+    soundOn = !soundOn;
+    try { localStorage.setItem(SAVE_KEY + '.sound', soundOn ? 'on' : 'off'); } catch (e) { /* ignore */ }
+    if (!soundOn && hasTTS) speechSynthesis.cancel();
+    syncSoundBtn();
+  });
+  syncSoundBtn();
+
+  // 星空背景
+  (function makeStars() {
+    const sf = $('#starfield');
+    for (let i = 0; i < 70; i++) {
+      const s = document.createElement('div');
+      s.className = 'star';
+      s.style.left = Math.random() * 100 + '%';
+      s.style.top = Math.random() * 100 + '%';
+      s.style.animationDelay = (Math.random() * 3).toFixed(2) + 's';
+      const size = Math.random() < 0.2 ? 4 : 2;
+      s.style.width = s.style.height = size + 'px';
+      sf.appendChild(s);
+    }
+  })();
+
+  renderHome();
+})();
