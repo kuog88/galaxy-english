@@ -4,10 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
   <title>銀河英語闖關</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Huninn&display=swap">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <div id="starfield" aria-hidden="true"></div>
+  <div id="scenery" aria-hidden="true">
+    <svg class="hills" viewBox="0 0 1200 160" preserveAspectRatio="none">
+      <path d="M0 90 C 200 30, 380 40, 560 85 S 900 40, 1200 70 L1200 160 L0 160Z" fill="#cfe0bf"/>
+      <path d="M0 120 C 220 80, 420 95, 640 120 S 1000 85, 1200 110 L1200 160 L0 160Z" fill="#b3cf9f"/>
+      <path d="M0 145 C 300 125, 600 140, 900 132 S 1100 138, 1200 135 L1200 160 L0 160Z" fill="#98bd86"/>
+    </svg>
+  </div>
 
   <header class="topbar">
     <button id="btn-home" class="icon-btn" title="回首頁">🏠</button>

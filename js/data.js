@@ -4,7 +4,7 @@
 
 window.GAME_DATA = {
   vocab: [
-    { name: '水果星', icon: '🍎', color: '#ff7e7e', words: [
+    { name: '水果星', icon: '🍎', color: '#f4c6b8', words: [
       ['apple', '蘋果', '阿婆', '🍎'],
       ['banana', '香蕉', '爸娜娜', '🍌'],
       ['orange', '柳橙', '歐潤居', '🍊'],
@@ -14,7 +14,7 @@ window.GAME_DATA = {
       ['melon', '甜瓜', '美論', '🍈'],
       ['cherry', '櫻桃', '切瑞', '🍒'],
     ]},
-    { name: '寵物星', icon: '🐶', color: '#ffb347', words: [
+    { name: '寵物星', icon: '🐶', color: '#f5d6a8', words: [
       ['cat', '貓', '凱特', '🐱'],
       ['dog', '狗', '豆哥', '🐶'],
       ['bird', '鳥', '撥的', '🐦'],
@@ -24,7 +24,7 @@ window.GAME_DATA = {
       ['cow', '乳牛', '靠', '🐮'],
       ['frog', '青蛙', '福拉格', '🐸'],
     ]},
-    { name: '叢林星', icon: '🦁', color: '#f6d743', words: [
+    { name: '叢林星', icon: '🦁', color: '#f5e3a0', words: [
       ['tiger', '老虎', '太格', '🐯'],
       ['lion', '獅子', '賴恩', '🦁'],
       ['monkey', '猴子', '忙奇', '🐵'],
@@ -34,7 +34,7 @@ window.GAME_DATA = {
       ['panda', '熊貓', '胖達', '🐼'],
       ['snake', '蛇', '斯內克', '🐍'],
     ]},
-    { name: '彩虹星', icon: '🌈', color: '#8fd16a', words: [
+    { name: '彩虹星', icon: '🌈', color: '#cfe2c1', words: [
       ['red', '紅色', '瑞德', '🔴'],
       ['blue', '藍色', '不路', '🔵'],
       ['green', '綠色', '格林', '🟢'],
@@ -44,7 +44,7 @@ window.GAME_DATA = {
       ['brown', '咖啡色', '布朗', '🟤'],
       ['purple', '紫色', '波波', '🟣'],
     ]},
-    { name: '學校星', icon: '🏫', color: '#5bc0ff', words: [
+    { name: '學校星', icon: '🏫', color: '#c6dfe9', words: [
       ['book', '書', '不可', '📚'],
       ['pen', '原子筆', '盆', '🖊️'],
       ['ruler', '尺', '入了', '📏'],
@@ -54,7 +54,7 @@ window.GAME_DATA = {
       ['teacher', '老師', '踢球', '🧑‍🏫'],
       ['crayon', '蠟筆', '克雷昂', '🖍️'],
     ]},
-    { name: '美食星', icon: '🍰', color: '#ff8fc7', words: [
+    { name: '美食星', icon: '🍰', color: '#f2cfd6', words: [
       ['cake', '蛋糕', '給克', '🍰'],
       ['milk', '牛奶', '謬克', '🥛'],
       ['egg', '蛋', '愛格', '🥚'],
@@ -64,7 +64,7 @@ window.GAME_DATA = {
       ['juice', '果汁', '啾斯', '🧃'],
       ['candy', '糖果', '看低', '🍬'],
     ]},
-    { name: '身體星', icon: '👀', color: '#b38bff', words: [
+    { name: '身體星', icon: '👀', color: '#dcd0e8', words: [
       ['eye', '眼睛', '愛', '👁️'],
       ['ear', '耳朵', '一兒', '👂'],
       ['nose', '鼻子', '鬧斯', '👃'],
@@ -74,7 +74,7 @@ window.GAME_DATA = {
       ['head', '頭', '黑的', '🙂'],
       ['hair', '頭髮', '黑兒', '💇'],
     ]},
-    { name: '家人星', icon: '👨‍👩‍👧', color: '#ff9f6b', words: [
+    { name: '家人星', icon: '👨‍👩‍👧', color: '#f3d0b5', words: [
       ['father', '爸爸', '發者', '👨'],
       ['mother', '媽媽', '媽的', '👩'],
       ['baby', '嬰兒', '背比', '👶'],
@@ -84,7 +84,7 @@ window.GAME_DATA = {
       ['cook', '廚師', '庫克', '🧑‍🍳'],
       ['farmer', '農夫', '放麼', '🧑‍🌾'],
     ]},
-    { name: '天空星', icon: '☀️', color: '#4fd1c5', words: [
+    { name: '天空星', icon: '☀️', color: '#c3e3dc', words: [
       ['sun', '太陽', '散', '☀️'],
       ['moon', '月亮', '木恩', '🌙'],
       ['star', '星星', '斯大', '⭐'],
@@ -94,7 +94,7 @@ window.GAME_DATA = {
       ['tree', '樹', '去理', '🌳'],
       ['flower', '花', '福拉窩', '🌸'],
     ]},
-    { name: '玩具星', icon: '🤖', color: '#7aa2ff', words: [
+    { name: '玩具星', icon: '🤖', color: '#cdd8ee', words: [
       ['bus', '公車', '巴士', '🚌'],
       ['car', '汽車', '卡', '🚗'],
       ['bike', '腳踏車', '拜克', '🚲'],
@@ -104,7 +104,7 @@ window.GAME_DATA = {
       ['kite', '風箏', '開特', '🪁'],
       ['ball', '球', '剝', '⚽'],
     ]},
-    { name: '運動星', icon: '🏃', color: '#ff6b9a', words: [
+    { name: '運動星', icon: '🏃', color: '#f0c4c9', words: [
       ['run', '跑', '讓', '🏃'],
       ['jump', '跳', '尖普', '🦘'],
       ['swim', '游泳', '斯威姆', '🏊'],
@@ -114,7 +114,7 @@ window.GAME_DATA = {
       ['sleep', '睡覺', '斯利普', '😴'],
       ['walk', '走路', '襪克', '🚶'],
     ]},
-    { name: '心情星', icon: '😄', color: '#ffd23f', words: [
+    { name: '心情星', icon: '😄', color: '#f7e2a4', words: [
       ['happy', '快樂的', '嘿皮', '😄'],
       ['sad', '難過的', '賽的', '😢'],
       ['hungry', '餓的', '夯格瑞', '😋'],
@@ -127,7 +127,7 @@ window.GAME_DATA = {
   ],
 
   sentence: [
-    { name: '打招呼', icon: '👋', color: '#ff7e7e', items: [
+    { name: '打招呼', icon: '👋', color: '#f4c6b8', items: [
       ['How are you?', '你好嗎？', "I'm fine, thank you.", '我很好，謝謝。',
         [["It's a cat.", '牠是一隻貓。'], ["I'm ten years old.", '我十歲。'], ['Yes, it is.', '是的，它是。']]],
       ["What's your name?", '你叫什麼名字？', 'My name is Amy.', '我的名字是 Amy。',
@@ -141,7 +141,7 @@ window.GAME_DATA = {
       ['How old are you?', '你幾歲？', "I'm nine years old.", '我九歲。',
         [["I'm fine.", '我很好。'], ["I'm a student.", '我是學生。'], ["It's nine o'clock.", '現在九點。']]],
     ]},
-    { name: '這是什麼', icon: '❓', color: '#ffb347', items: [
+    { name: '這是什麼', icon: '❓', color: '#f5d6a8', items: [
       ["What's this?", '這是什麼？', "It's a pencil.", '這是一枝鉛筆。',
         [["It's Monday.", '今天星期一。'], ["I'm happy.", '我很快樂。'], ['Yes, I do.', '是的，我有。']]],
       ["What's that?", '那是什麼？', "It's a kite.", '那是一個風箏。',
@@ -155,7 +155,7 @@ window.GAME_DATA = {
       ['Whose book is this?', '這是誰的書？', "It's Ben's book.", '這是 Ben 的書。',
         [["It's a big book.", '這是一本大書。'], ["It's on the desk.", '它在書桌上。'], ['I can read.', '我會閱讀。']]],
     ]},
-    { name: '我喜歡', icon: '❤️', color: '#f6d743', items: [
+    { name: '我喜歡', icon: '❤️', color: '#f5e3a0', items: [
       ['Do you like cats?', '你喜歡貓嗎？', 'Yes, I do.', '是的，我喜歡。',
         [['Yes, I am.', '是的，我是。'], ['Yes, it is.', '是的，它是。'], ["No, I can't.", '不，我不會。']]],
       ['What do you like?', '你喜歡什麼？', 'I like pizza.', '我喜歡披薩。',
@@ -169,7 +169,7 @@ window.GAME_DATA = {
       ['Do you want an egg?', '你想要一顆蛋嗎？', 'No, thank you.', '不用了，謝謝。',
         [["You're welcome.", '不客氣。'], ['Good night.', '晚安。'], ["It's a bird.", '牠是一隻鳥。']]],
     ]},
-    { name: '我會做', icon: '💪', color: '#8fd16a', items: [
+    { name: '我會做', icon: '💪', color: '#cfe2c1', items: [
       ['Can you swim?', '你會游泳嗎？', 'Yes, I can.', '是的，我會。',
         [['Yes, I do.', '是的，我有。'], ['Yes, I am.', '是的，我是。'], ['Yes, it is.', '是的，它是。']]],
       ['Can she dance?', '她會跳舞嗎？', "No, she can't.", '不，她不會。',
@@ -183,7 +183,7 @@ window.GAME_DATA = {
       ['May I come in?', '我可以進來嗎？', 'Sure, come in.', '當然，請進。',
         [["It's a cat.", '牠是一隻貓。'], ['Good morning.', '早安。'], ["I'm nine.", '我九歲。']]],
     ]},
-    { name: '時間天氣', icon: '⏰', color: '#5bc0ff', items: [
+    { name: '時間天氣', icon: '⏰', color: '#c6dfe9', items: [
       ['What time is it?', '現在幾點？', "It's seven o'clock.", '現在七點。',
         [["It's Monday.", '今天星期一。'], ["It's sunny.", '天氣晴朗。'], ["I'm seven.", '我七歲。']]],
       ['What day is today?', '今天星期幾？', "It's Friday.", '今天星期五。',
@@ -197,7 +197,7 @@ window.GAME_DATA = {
       ['What time do you get up?', '你幾點起床？', 'I get up at six.', '我六點起床。',
         [['I go to bed.', '我去睡覺。'], ["It's Tuesday.", '今天星期二。'], ['I like eggs.', '我喜歡蛋。']]],
     ]},
-    { name: '在哪裡', icon: '📍', color: '#ff8fc7', items: [
+    { name: '在哪裡', icon: '📍', color: '#f2cfd6', items: [
       ['Where is the cat?', '貓在哪裡？', "It's under the table.", '牠在桌子下面。',
         [["It's black.", '牠是黑色的。'], ["It's a cat.", '牠是一隻貓。'], ['Yes, it is.', '是的，牠是。']]],
       ['Where are you?', '你在哪裡？', "I'm in the kitchen.", '我在廚房。',
@@ -211,7 +211,7 @@ window.GAME_DATA = {
       ['How do you go to school?', '你怎麼去上學？', 'I go by bus.', '我搭公車去。',
         [['I go at seven.', '我七點去。'], ['I like school.', '我喜歡學校。'], ["It's a big school.", '這是一間大學校。']]],
     ]},
-    { name: '他是誰', icon: '🧑‍🤝‍🧑', color: '#b38bff', items: [
+    { name: '他是誰', icon: '🧑‍🤝‍🧑', color: '#dcd0e8', items: [
       ['Who is she?', '她是誰？', 'She is my mother.', '她是我媽媽。',
         [['He is my father.', '他是我爸爸。'], ["It's my book.", '這是我的書。'], ["I'm Amy.", '我是 Amy。']]],
       ['Who is he?', '他是誰？', 'He is my brother.', '他是我哥哥。',
@@ -225,7 +225,7 @@ window.GAME_DATA = {
       ['How many people are in your family?', '你家有幾個人？', 'There are four.', '有四個人。',
         [["I'm four.", '我四歲。'], ["It's four o'clock.", '現在四點。'], ['Four apples.', '四顆蘋果。']]],
     ]},
-    { name: '正在做', icon: '🎬', color: '#4fd1c5', items: [
+    { name: '正在做', icon: '🎬', color: '#c3e3dc', items: [
       ['What are you doing?', '你正在做什麼？', "I'm reading a book.", '我正在看書。',
         [['I like books.', '我喜歡書。'], ['I can read.', '我會閱讀。'], ["It's a book.", '這是一本書。']]],
       ['What is he doing?', '他正在做什麼？', 'He is playing basketball.', '他正在打籃球。',
@@ -239,7 +239,7 @@ window.GAME_DATA = {
       ["Let's play ball!", '我們來玩球吧！', "OK! Let's go!", '好啊！走吧！',
         [["It's a ball.", '這是一顆球。'], ['Good night.', '晚安。'], ["I'm ten.", '我十歲。']]],
     ]},
-    { name: '去購物', icon: '🛒', color: '#ff9f6b', items: [
+    { name: '去購物', icon: '🛒', color: '#f3d0b5', items: [
       ['How much is it?', '它多少錢？', "It's fifty dollars.", '五十元。',
         [["It's five o'clock.", '現在五點。'], ["I'm fine.", '我很好。'], ["It's big.", '它很大。']]],
       ['What do you want to buy?', '你想買什麼？', 'I want a hat.', '我想要一頂帽子。',

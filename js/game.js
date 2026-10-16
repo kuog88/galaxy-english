@@ -5,8 +5,8 @@
   const PER_LEVEL = 5;               // 每關題數
   const SAVE_KEY = 'galaxyEnglish.v1';
   const MODES = {
-    vocab: { label: '單字星球', icon: '🚀' },
-    sentence: { label: '句型星球', icon: '🛸' },
+    vocab: { label: '單字星球', icon: '🎈' },
+    sentence: { label: '句型星球', icon: '🪁' },
   };
   const CHEERS = ['Great!', 'Super!', 'Awesome!', 'Good job!', 'Wonderful!', 'Excellent!'];
   const HELLOS = ['Hello!', "Let's go!", 'You can do it!', 'Hi, friend!', 'Have fun!'];
@@ -173,22 +173,22 @@
     };
     app.innerHTML = `
       <section class="home">
-        <button class="sticker s1" data-action="sticker">🪐</button>
-        <button class="sticker s2" data-action="sticker">⭐</button>
-        <button class="sticker s3" data-action="sticker">👽</button>
-        <button class="sticker s4" data-action="sticker">🌙</button>
-        <button class="mascot" data-action="sticker" title="點我打招呼">🧑‍🚀</button>
+        <button class="sticker s1" data-action="sticker">🍃</button>
+        <button class="sticker s2" data-action="sticker">🌻</button>
+        <button class="sticker s3" data-action="sticker">🐞</button>
+        <button class="sticker s4" data-action="sticker">🍄</button>
+        <button class="mascot" data-action="sticker" title="點我打招呼">🐈</button>
         <h1>銀河英語闖關</h1>
-        <p class="sub">點點看可愛的圖示，選一顆星球出發吧！</p>
+        <p class="sub">點點看可愛的圖示，選一座小島出發吧！</p>
         ${cont}
         <div class="mode-grid">
           <button class="mode-card vocab" data-action="map" data-mode="vocab">
-            <span class="mode-icon">🚀</span><b>單字星球</b>
+            <span class="mode-icon">🎈</span><b>單字星球</b>
             <small>聽發音・諧音記憶・拼字</small>
             <span class="mode-prog">${prog('vocab')}</span>
           </button>
           <button class="mode-card sentence" data-action="map" data-mode="sentence">
-            <span class="mode-icon">🛸</span><b>句型星球</b>
+            <span class="mode-icon">🪁</span><b>句型星球</b>
             <small>聽句子・選出正確回答</small>
             <span class="mode-prog">${prog('sentence')}</span>
           </button>
@@ -220,8 +220,8 @@
     }).join('');
     app.innerHTML = `
       <div class="map-head">
-        <button class="tab ${mode === 'vocab' ? 'on' : ''}" data-action="map" data-mode="vocab">🚀 單字</button>
-        <button class="tab ${mode === 'sentence' ? 'on' : ''}" data-action="map" data-mode="sentence">🛸 句型</button>
+        <button class="tab ${mode === 'vocab' ? 'on' : ''}" data-action="map" data-mode="vocab">🎈 單字</button>
+        <button class="tab ${mode === 'sentence' ? 'on' : ''}" data-action="map" data-mode="sentence">🪁 句型</button>
       </div>
       <div class="planet-grid">${cards}</div>`;
   }
@@ -286,7 +286,7 @@
       </div>
       <div class="actions">
         <button class="big-btn blue" data-action="say-word">🔊 再聽一次</button>
-        <button class="big-btn" data-action="to-spell">✏️ 開始拼字</button>
+        <button class="big-btn green" data-action="to-spell">✏️ 開始拼字</button>
       </div>`;
     setTimeout(() => speak(w.en), 350);
   }
@@ -506,7 +506,7 @@
         <div class="stars">${'★'.repeat(stars)}<span class="off">${'★'.repeat(3 - stars)}</span></div>
         <p>⏱ 用時 ${fmtTime(elapsed)}　❌ 錯誤 ${mistakes} 次</p>
         <div class="actions">
-          <button class="big-btn ghost" style="color:var(--ink);background:#eef0ff" data-action="start" data-mode="${mode}" data-level="${level}">🔁 再玩一次</button>
+          <button class="big-btn ghost" data-action="start" data-mode="${mode}" data-level="${level}">🔁 再玩一次</button>
           ${hasNext ? `<button class="big-btn" data-action="start" data-mode="${mode}" data-level="${level + 1}">下一關 ➜</button>` : ''}
           <button class="big-btn blue" data-action="map" data-mode="${mode}">🗺️ 關卡地圖</button>
         </div>
@@ -598,18 +598,18 @@
   });
   syncSoundBtn();
 
-  // 星空背景
-  (function makeStars() {
-    const sf = $('#starfield');
-    for (let i = 0; i < 70; i++) {
-      const s = document.createElement('div');
-      s.className = 'star';
-      s.style.left = Math.random() * 100 + '%';
-      s.style.top = Math.random() * 100 + '%';
-      s.style.animationDelay = (Math.random() * 3).toFixed(2) + 's';
-      const size = Math.random() < 0.2 ? 4 : 2;
-      s.style.width = s.style.height = size + 'px';
-      sf.appendChild(s);
+  // 背景慢慢飄的雲
+  (function makeClouds() {
+    const sc = $('#scenery');
+    for (let i = 0; i < 5; i++) {
+      const c = document.createElement('div');
+      c.className = 'cloud';
+      const dur = 60 + Math.random() * 50;
+      c.style.top = (40 + Math.random() * 180) + 'px';
+      c.style.animationDuration = dur.toFixed(0) + 's';
+      c.style.animationDelay = (-Math.random() * dur).toFixed(0) + 's';
+      c.style.scale = (0.6 + Math.random() * 0.7).toFixed(2);
+      sc.appendChild(c);
     }
   })();
 
