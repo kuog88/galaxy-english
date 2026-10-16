@@ -267,6 +267,40 @@ main {
 .tile:nth-child(5n+5) { background: #dcd0e8; }
 @keyframes popIn { from { transform: scale(0); } to { transform: scale(1); } }
 
+/* ---------- 複習關：掉落字母 ---------- */
+.rush-top { padding: 14px; }
+.rush-top .clue-bar { margin-bottom: 12px; }
+.rush-zh { font-size: 1.5rem; }
+.rush-board {
+  position: relative; margin: 14px auto 0; overflow: hidden; touch-action: none;
+  border: 3px solid var(--ink); border-radius: 14px;
+  background:
+    linear-gradient(rgba(74, 63, 53, .05) 1px, transparent 1px) 0 0 / var(--cell) var(--cell),
+    linear-gradient(90deg, rgba(74, 63, 53, .05) 1px, transparent 1px) 0 0 / var(--cell) var(--cell),
+    var(--card);
+}
+.rush-board.shake { animation: shake .4s; }
+.midline {
+  position: absolute; left: 0; right: 0; border-top: 3px dashed var(--rose-dark); z-index: 1; pointer-events: none;
+}
+.midline span {
+  position: absolute; right: 6px; top: -22px; font-size: .75rem; font-weight: 700; color: var(--rose-dark);
+  background: var(--card); padding: 0 6px; border-radius: 6px;
+}
+.fall {
+  position: absolute; z-index: 2; width: calc(var(--cell) - 4px); height: calc(var(--cell) - 4px); margin: 2px;
+  border-radius: 12px; border: 2px solid rgba(74, 63, 53, .2); padding: 0;
+  font-family: Georgia, serif; font-weight: 700; font-size: calc(var(--cell) * .55); color: var(--ink);
+  box-shadow: 0 3px 0 rgba(74, 63, 53, .18);
+}
+.fall.landed { transition: top .2s; filter: saturate(.75); }
+.fall.got { animation: got .35s forwards; pointer-events: none; }
+.fall.pop { animation: fadeOut .35s forwards; pointer-events: none; }
+.fall.nope { animation: shake .35s; border-color: var(--rose-dark); }
+@keyframes got { to { transform: scale(1.6) translateY(-20px); opacity: 0; } }
+@keyframes fadeOut { to { transform: scale(.3); opacity: 0; } }
+.rush-tip { text-align: center; color: var(--muted); margin: 10px 0 0; }
+
 /* ---------- 句型 ---------- */
 .q-card { animation: flipIn .5s ease-out; }
 .q-emoji { font-size: 3.2rem; background: none; padding: 0; }

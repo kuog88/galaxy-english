@@ -59,7 +59,7 @@
     }
     return null;
   }
-  function speak(text, lang = 'en-US', rate = 0.8) {
+  function speak(text, lang = 'en-US', rate = 0.7) {
     if (!soundOn || !hasTTS) return;
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
@@ -149,6 +149,7 @@
   }
   function leaveLevel() {
     clearTimeout(game.pending);
+    if (game.rush) rushStop();
     game.busy = false;
     stopTimer();
     if (hasTTS) speechSynthesis.cancel();
@@ -232,16 +233,17 @@
   function startLevel(mode, n) {
     leaveLevel();
     const lv = levels(mode)[n - 1];
-    const pool = mode === 'vocab' ? lv.words : lv.items;
+    const pool = mode === 'sentence' ? lv.items : lv.review ? reviewPool(lv) : lv.words;
     Object.assign(game, {
-      mode, level: n, idx: 0, mistakes: 0, busy: false,
+      mode, level: n, idx: 0, mistakes: 0, busy: false, review: !!lv.review,
       items: shuffle(pool).slice(0, PER_LEVEL),
     });
     save.last = { mode, level: n };
     persist();
     setTitle(`第 ${n} 關・${lv.name}`);
     startTimer();
-    showQuestion();
+    if (game.review) startRush();
+    else showQuestion();
   }
 
   function dotsHtml() {
@@ -432,7 +434,216 @@
   }
 
   // =====================================================
-  // 句型：問句 + 三個選項（附中文）
+  // 複習關：字母慢慢掉下來（像俄羅斯方塊）
+  // 依序點出單字的字母；沒點到的會在下面堆積，堆到中線就失敗；
+  // 每拼完一個單字，堆積的字母全部消掉。
+  // =====================================================
+  const RUSH_COLS = 6;
+  const RUSH_ROWS = 10;
+  const RUSH_COLORS = ['#f4c6b8', '#c6dfe9', '#f5dd9c', '#cfe2c1', '#dcd0e8'];
+
+  function reviewPool(lv) {
+    const [from, to] = lv.review;
+    return levels('vocab').slice(from - 1, to).filter((l) => !l.review).flatMap((l) => l.words);
+  }
+
+  function startRush() {
+    const fast = game.level >= 10;
+    // 依螢幕寬度和高度決定格子大小，讓整個掉落區都看得到
+    const cell = Math.floor(Math.max(30, Math.min(56,
+      (Math.min(window.innerWidth, 760) - 72) / RUSH_COLS,
+      (window.innerHeight - 340) / RUSH_ROWS)));
+    game.rush = {
+      cell,
+      speed: cell * (fast ? 1.05 : 0.8),   // 每秒掉多少 px
+      every: fast ? 1.3 : 1.6,             // 幾秒出現一個字母
+      letters: [], stacks: Array.from({ length: RUSH_COLS }, () => []),
+      answer: '', pos: 1, spawnT: 0.5, pauseT: 0, raf: 0, last: 0, nextId: 0, over: false,
+    };
+    app.innerHTML = `
+      <div id="rush-dots"></div>
+      <div class="panel rush-top">
+        <div class="clue-bar">
+          <span class="clue-emoji" id="rush-emoji"></span>
+          <b id="rush-zh" class="rush-zh"></b>
+          <button class="mini-btn" data-action="say-word" style="margin-left:auto">🔊</button>
+        </div>
+        <div id="rush-cells"></div>
+      </div>
+      <div class="rush-board" id="rush-board"
+           style="--cell:${cell}px;width:${cell * RUSH_COLS + 6}px;height:${cell * RUSH_ROWS + 6}px">
+        <div class="midline" style="top:${cell * RUSH_ROWS / 2}px"><span>堆到這條線就失敗</span></div>
+      </div>
+      <p class="rush-tip">照順序點掉下來的字母，拼出上面的單字！</p>`;
+    $('#rush-board').addEventListener('pointerdown', onRushTap);
+    rushSetWord();
+    game.rush.last = performance.now();
+    game.rush.raf = setInterval(rushLoop, 30);
+  }
+
+  function rushStop() {
+    const r = game.rush;
+    if (!r) return;
+    r.over = true;
+    clearInterval(r.raf);
+    game.rush = null;
+  }
+
+  function rushSetWord() {
+    const r = game.rush;
+    const w = curWord();
+    r.answer = w.en.toLowerCase();
+    r.pos = 1; // 開頭字母先給
+    $('#rush-emoji').textContent = w.icon;
+    $('#rush-zh').textContent = w.zh;
+    $('#rush-dots').innerHTML = dotsHtml();
+    renderRushCells();
+    setTimeout(() => speak(w.en), 300);
+  }
+
+  function renderRushCells(state) {
+    const r = game.rush;
+    $('#rush-cells').innerHTML = `<div class="grid" style="--n:${r.answer.length}">` +
+      r.answer.split('').map((ch, i) => {
+        const cls = ['cell'];
+        if (i === 0) cls.push('locked');
+        if (state === 'ok') cls.push('ok');
+        else if (i === r.pos) cls.push('active');
+        return `<span class="${cls.join(' ')}">${i === 0 ? '<span class="num">1</span>' : ''}${i < r.pos ? esc(ch) : ''}</span>`;
+      }).join('') + '</div>';
+  }
+
+  function placeLetter(L) {
+    L.el.style.left = (L.col * game.rush.cell) + 'px';
+    L.el.style.top = L.y + 'px';
+  }
+
+  function rushSpawn() {
+    const r = game.rush;
+    const need = r.answer[r.pos];
+    // 畫面上沒有下一個要點的字母時，一定先掉它，避免卡關
+    const onBoard = r.letters.some((L) => L.ch === need);
+    const x = Math.random();
+    const ch = !onBoard || x < 0.4 ? need
+      : x < 0.75 ? pick(r.answer.slice(1).split(''))
+      : pick(ALPHABET.split(''));
+    const free = [...Array(RUSH_COLS).keys()].filter((c) =>
+      !r.letters.some((L) => !L.landed && L.col === c && L.y < r.cell * 1.5));
+    if (!free.length) return;
+    const el = document.createElement('button');
+    el.className = 'fall';
+    el.textContent = ch;
+    el.style.background = RUSH_COLORS[r.nextId % RUSH_COLORS.length];
+    const L = { id: r.nextId++, ch, col: pick(free), y: -r.cell, landed: false, el };
+    r.letters.push(L);
+    $('#rush-board').appendChild(el);
+    placeLetter(L);
+  }
+
+  function rushLoop() {
+    const r = game.rush;
+    if (!r || r.over) return;
+    const now = performance.now();
+    const dt = Math.min(0.05, (now - r.last) / 1000);
+    r.last = now;
+    if (r.pauseT > 0) {
+      r.pauseT -= dt;
+    } else {
+      r.spawnT -= dt;
+      if (r.spawnT <= 0) { rushSpawn(); r.spawnT = r.every; }
+    }
+    for (const L of r.letters) {
+      if (L.landed) continue;
+      L.y += r.speed * dt;
+      const floor = (RUSH_ROWS - 1 - r.stacks[L.col].length) * r.cell;
+      if (L.y >= floor) {
+        L.y = floor;
+        L.landed = true;
+        L.el.classList.add('landed');
+        r.stacks[L.col].push(L);
+        placeLetter(L);
+        if (r.stacks[L.col].length >= RUSH_ROWS / 2) return rushFail();
+      }
+      placeLetter(L);
+    }
+  }
+
+  function removeLetter(L, cls) {
+    const r = game.rush;
+    r.letters = r.letters.filter((x) => x !== L);
+    if (L.landed) {
+      // 抽掉堆裡的字母，上面的往下補
+      const st = r.stacks[L.col];
+      st.splice(st.indexOf(L), 1);
+      st.forEach((x, i) => { x.y = (RUSH_ROWS - 1 - i) * r.cell; placeLetter(x); });
+    }
+    L.el.classList.add(cls);
+    setTimeout(() => L.el.remove(), 350);
+  }
+
+  function onRushTap(e) {
+    const r = game.rush;
+    const el = e.target.closest('.fall');
+    if (!el || !r || r.over || r.pauseT > 0) return;
+    e.preventDefault();
+    const L = r.letters.find((x) => x.el === el);
+    if (!L) return;
+    if (L.ch !== r.answer[r.pos]) {
+      game.mistakes++;
+      sfx.bad();
+      el.classList.remove('nope');
+      void el.offsetWidth;
+      el.classList.add('nope');
+      return;
+    }
+    removeLetter(L, 'got');
+    sfx.tap();
+    r.pos++;
+    if (r.pos >= r.answer.length) rushWordDone();
+    else renderRushCells();
+  }
+
+  function rushWordDone() {
+    const r = game.rush;
+    r.pauseT = 1.7;
+    renderRushCells('ok');
+    sfx.good();
+    toast(pick(CHEERS) + ' ⭐');
+    setTimeout(() => speak(r.answer), 250);
+    // 成功就把堆積的字母全部消掉
+    r.letters.forEach((L) => { L.el.classList.add('pop'); setTimeout(() => L.el.remove(), 350); });
+    r.letters = [];
+    r.stacks.forEach((s) => { s.length = 0; });
+    game.idx++;
+    later(() => {
+      if (game.idx >= game.items.length) { rushStop(); finishLevel(); }
+      else rushSetWord();
+    }, 1500);
+  }
+
+  function rushFail() {
+    const done = game.idx;
+    rushStop();
+    stopTimer();
+    sfx.bad();
+    setTimeout(() => speak('Oh no! Try again!'), 300);
+    $('#rush-board').classList.add('shake');
+    later(() => {
+      app.innerHTML = `
+        <div class="panel result">
+          <div class="big-emoji">🍂</div>
+          <h2>字母堆到中線了！</h2>
+          <p>完成了 ${done} / ${game.items.length} 個單字，再試一次吧！</p>
+          <div class="actions">
+            <button class="big-btn" data-action="start" data-mode="vocab" data-level="${game.level}">🔁 再試一次</button>
+            <button class="big-btn blue" data-action="map" data-mode="vocab">🗺️ 關卡地圖</button>
+          </div>
+        </div>`;
+    }, 1000);
+  }
+
+  // =====================================================
+  // 句型：問句 + 三個選項（中文要按提示才出現）
   // =====================================================
   function showSentence() {
     const [q, qzh, a, azh, wrongs] = game.items[game.idx];
@@ -448,17 +659,22 @@
         <div class="q-zh" id="q-zh"><button class="mini-btn" data-action="show-zh">👀 看中文</button></div>
         <div class="actions" style="margin-top:12px">
           <button class="big-btn blue" data-action="say-q">🔊 再聽一次</button>
+          <button class="big-btn pink" data-action="opt-hint">💡 提示</button>
         </div>
       </div>
       <div class="options">
         ${opts.map((o, i) => `
           <button class="opt" data-action="opt" data-i="${i}">
             <span class="letter">${'ABC'[i]}</span>
-            <span class="txt"><span class="en">${esc(o.en)}</span><span class="zh">${esc(o.zh)}</span></span>
+            <span class="txt"><span class="en">${esc(o.en)}</span><span class="zh hidden">${esc(o.zh)}</span></span>
           </button>`).join('')}
       </div>`;
     game.qzh = qzh;
     setTimeout(() => speak(q), 350);
+  }
+
+  function showOptZh() {
+    document.querySelectorAll('.opt .zh').forEach((z) => z.classList.remove('hidden'));
   }
 
   function chooseOpt(i, el) {
@@ -467,6 +683,7 @@
       game.busy = true;
       el.classList.add('right');
       document.querySelectorAll('.opt').forEach((b) => { b.disabled = true; });
+      showOptZh(); // 答對後順便看中文意思
       sfx.good();
       toast(pick(CHEERS) + ' ⭐');
       setTimeout(() => speak(o.en), 300);
@@ -487,7 +704,9 @@
     const elapsed = Date.now() - startTime;
     stopTimer();
     const { mode, level, mistakes } = game;
-    const stars = mistakes === 0 ? 3 : mistakes <= 2 ? 2 : 1;
+    // 複習關容易點錯，星星標準放寬一點
+    const [three, two] = game.review ? [1, 4] : [0, 2];
+    const stars = mistakes <= three ? 3 : mistakes <= two ? 2 : 1;
     const s = save[mode];
     s.stars[level] = Math.max(s.stars[level] || 0, stars);
     const total = levels(mode).length;
@@ -555,7 +774,7 @@
         speak(curWord().en);
         break;
       case 'say-homo':
-        speak(curWord().homo, 'zh-TW', 0.9);
+        speak(curWord().homo, 'zh-TW');
         break;
       case 'to-spell':
         sfx.tap();
@@ -582,6 +801,10 @@
         break;
       case 'opt':
         if (!game.busy) chooseOpt(Number(el.dataset.i), el);
+        break;
+      case 'opt-hint':
+        sfx.tap();
+        showOptZh();
         break;
     }
   });

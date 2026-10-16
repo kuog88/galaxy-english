@@ -44,6 +44,8 @@ window.GAME_DATA = {
       ['brown', '咖啡色', '布朗', '🟤'],
       ['purple', '紫色', '波波', '🟣'],
     ]},
+    // 複習關：字母像俄羅斯方塊一樣掉下來，題目從 review 指定的關卡隨機抽
+    { name: '落葉複習', icon: '🍂', color: '#f3dcc0', review: [1, 4] },
     { name: '學校星', icon: '🏫', color: '#c6dfe9', words: [
       ['book', '書', '不可', '📚'],
       ['pen', '原子筆', '盆', '🖊️'],
@@ -84,6 +86,7 @@ window.GAME_DATA = {
       ['cook', '廚師', '庫克', '🧑‍🍳'],
       ['farmer', '農夫', '放麼', '🧑‍🌾'],
     ]},
+    { name: '流星雨複習', icon: '🌠', color: '#d9d4ee', review: [6, 9] },
     { name: '天空星', icon: '☀️', color: '#c3e3dc', words: [
       ['sun', '太陽', '散', '☀️'],
       ['moon', '月亮', '木恩', '🌙'],
