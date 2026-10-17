@@ -299,7 +299,23 @@ main {
 .fall.nope { animation: shake .35s; border-color: var(--rose-dark); }
 @keyframes got { to { transform: scale(1.6) translateY(-20px); opacity: 0; } }
 @keyframes fadeOut { to { transform: scale(.3); opacity: 0; } }
-.rush-tip { text-align: center; color: var(--muted); margin: 10px 0 0; }
+.rush-tip { text-align: center; color: var(--muted); margin: 10px 0 0; font-weight: 700; }
+.garbage {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 0; z-index: 1; transition: height .25s;
+  background: repeating-linear-gradient(45deg, #cdbfa3 0 10px, #bfae8e 10px 20px);
+  box-shadow: inset 0 3px 0 rgba(74, 63, 53, .25);
+}
+.fall.nope-out { animation: nopeOut .35s forwards; pointer-events: none; border-color: var(--rose-dark); }
+@keyframes nopeOut { to { transform: translateY(40px) scale(.5); opacity: 0; } }
+.review-list {
+  list-style: none; padding: 0; margin: 14px 0 0; text-align: left;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.review-list li {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  background: #fbf3d9; border: 2px dashed var(--sun-dark); border-radius: 14px; padding: 10px 14px;
+}
+.review-list b { font-family: Georgia, serif; }
 
 /* ---------- 句型 ---------- */
 .q-card { animation: flipIn .5s ease-out; }

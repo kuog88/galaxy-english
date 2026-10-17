@@ -302,13 +302,15 @@
     const w = curWord();
     const answer = w.en.toLowerCase();
     const cells = Array(answer.length).fill(null);
-    cells[0] = { ch: answer[0], locked: true }; // 開頭字母先給
-    const letters = answer.slice(1).split('');
-    // 第 4 關起多 1 個干擾字母，第 8 關起多 2 個
-    const decoys = game.level >= 8 ? 2 : game.level >= 4 ? 1 : 0;
+    // 隨機先給一個字母（不固定在開頭，才不會太好猜）
+    const given = Math.floor(Math.random() * answer.length);
+    cells[given] = { ch: answer[given], locked: true };
+    const correct = answer.slice(0, given) + answer.slice(given + 1);
+    const letters = correct.split('');
+    // 第 4 關起多 1 個干擾字母，第 9 關起多 2 個（干擾字母會被打散到隨機位置）
+    const decoys = game.level >= 9 ? 2 : game.level >= 4 ? 1 : 0;
     for (let i = 0; i < decoys; i++) letters.push(pick(ALPHABET.split('')));
     let order = shuffle(letters);
-    const correct = answer.slice(1);
     for (let t = 0; t < 10 && letters.length > 1 && order.join('').startsWith(correct); t++) order = shuffle(letters);
     game.spell = {
       answer, cells,
@@ -435,11 +437,16 @@
 
   // =====================================================
   // 複習關：字母慢慢掉下來（像俄羅斯方塊）
-  // 依序點出單字的字母；沒點到的會在下面堆積，堆到中線就失敗；
-  // 每拼完一個單字，堆積的字母全部消掉。
+  // 依序點出單字的字母；沒點到的字母會在下面堆積。
+  // 點錯字母：底部多一排懲罰方塊，掉落速度也變快；
+  // 堆到懲罰線就失敗（錯 4 次一定會碰到線）。
+  // 每拼完一個單字，掉下來的字母會消掉（懲罰方塊留著）。
   // =====================================================
-  const RUSH_COLS = 6;
-  const RUSH_ROWS = 10;
+  const RUSH_COLS = 5;
+  const RUSH_ROWS = 9;
+  const RUSH_LIMIT = 5;       // 懲罰線高度（排）
+  const RUSH_MAX_WRONG = 4;   // 錯 4 次，懲罰方塊剛好堆到懲罰線
+  const RUSH_SPEEDUP = 1.25;  // 每錯一次，掉落速度 ×1.25
   const RUSH_COLORS = ['#f4c6b8', '#c6dfe9', '#f5dd9c', '#cfe2c1', '#dcd0e8'];
 
   function reviewPool(lv) {
@@ -447,18 +454,24 @@
     return levels('vocab').slice(from - 1, to).filter((l) => !l.review).flatMap((l) => l.words);
   }
 
+  // 這個單字是第幾關學的（失敗時告訴小朋友去哪一關複習）
+  function wordLevel(en) {
+    return levels('vocab').findIndex((l) => l.words && l.words.some((w) => w[0] === en)) + 1;
+  }
+
   function startRush() {
     const fast = game.level >= 10;
-    // 依螢幕寬度和高度決定格子大小，讓整個掉落區都看得到
-    const cell = Math.floor(Math.max(30, Math.min(56,
+    // 字母方塊盡量大，但整個掉落區要放得進螢幕
+    const cell = Math.floor(Math.max(44, Math.min(64,
       (Math.min(window.innerWidth, 760) - 72) / RUSH_COLS,
-      (window.innerHeight - 340) / RUSH_ROWS)));
+      (window.innerHeight - 330) / RUSH_ROWS)));
     game.rush = {
       cell,
-      speed: cell * (fast ? 1.05 : 0.8),   // 每秒掉多少 px
-      every: fast ? 1.3 : 1.6,             // 幾秒出現一個字母
+      speed: cell * (fast ? 0.9 : 0.7),   // 每秒掉多少 px
+      every: fast ? 1.4 : 1.7,            // 幾秒出現一個字母
       letters: [], stacks: Array.from({ length: RUSH_COLS }, () => []),
-      answer: '', pos: 1, spawnT: 0.5, pauseT: 0, raf: 0, last: 0, nextId: 0, over: false,
+      garbagePx: 0, wrong: 0,
+      answer: '', pos: 1, spawnT: 0.5, pauseT: 0, timer: 0, last: 0, nextId: 0, over: false,
     };
     app.innerHTML = `
       <div id="rush-dots"></div>
@@ -472,20 +485,21 @@
       </div>
       <div class="rush-board" id="rush-board"
            style="--cell:${cell}px;width:${cell * RUSH_COLS + 6}px;height:${cell * RUSH_ROWS + 6}px">
-        <div class="midline" style="top:${cell * RUSH_ROWS / 2}px"><span>堆到這條線就失敗</span></div>
+        <div class="garbage" id="rush-garbage"></div>
+        <div class="midline" style="top:${cell * (RUSH_ROWS - RUSH_LIMIT)}px"><span>懲罰線：堆到這裡就失敗</span></div>
       </div>
-      <p class="rush-tip">照順序點掉下來的字母，拼出上面的單字！</p>`;
+      <p class="rush-tip" id="rush-tip">照順序點掉下來的字母，拼出上面的單字！點錯會加速喔</p>`;
     $('#rush-board').addEventListener('pointerdown', onRushTap);
     rushSetWord();
     game.rush.last = performance.now();
-    game.rush.raf = setInterval(rushLoop, 30);
+    game.rush.timer = setInterval(rushLoop, 30);
   }
 
   function rushStop() {
     const r = game.rush;
     if (!r) return;
     r.over = true;
-    clearInterval(r.raf);
+    clearInterval(r.timer);
     game.rush = null;
   }
 
@@ -517,6 +531,22 @@
     L.el.style.left = (L.col * game.rush.cell) + 'px';
     L.el.style.top = L.y + 'px';
   }
+
+  // 某一欄目前最上面可以落下的位置
+  function rushFloor(col) {
+    const r = game.rush;
+    return RUSH_ROWS * r.cell - r.garbagePx - (r.stacks[col].length + 1) * r.cell;
+  }
+
+  function restack(col) {
+    const r = game.rush;
+    r.stacks[col].forEach((x, i) => { x.y = RUSH_ROWS * r.cell - r.garbagePx - (i + 1) * r.cell; placeLetter(x); });
+  }
+
+  const overLimit = () => {
+    const r = game.rush;
+    return r.stacks.some((s) => r.garbagePx + s.length * r.cell >= RUSH_LIMIT * r.cell - 1);
+  };
 
   function rushSpawn() {
     const r = game.rush;
@@ -555,14 +585,14 @@
     for (const L of r.letters) {
       if (L.landed) continue;
       L.y += r.speed * dt;
-      const floor = (RUSH_ROWS - 1 - r.stacks[L.col].length) * r.cell;
+      const floor = rushFloor(L.col);
       if (L.y >= floor) {
         L.y = floor;
         L.landed = true;
         L.el.classList.add('landed');
         r.stacks[L.col].push(L);
         placeLetter(L);
-        if (r.stacks[L.col].length >= RUSH_ROWS / 2) return rushFail();
+        if (overLimit()) return rushFail();
       }
       placeLetter(L);
     }
@@ -575,10 +605,32 @@
       // 抽掉堆裡的字母，上面的往下補
       const st = r.stacks[L.col];
       st.splice(st.indexOf(L), 1);
-      st.forEach((x, i) => { x.y = (RUSH_ROWS - 1 - i) * r.cell; placeLetter(x); });
+      restack(L.col);
     }
     L.el.classList.add(cls);
     setTimeout(() => L.el.remove(), 350);
+  }
+
+  // 點錯：多一排懲罰方塊、掉落加速
+  function rushPenalty(L) {
+    const r = game.rush;
+    game.mistakes++;
+    r.wrong++;
+    r.garbagePx += RUSH_LIMIT * r.cell / RUSH_MAX_WRONG;
+    r.speed *= RUSH_SPEEDUP;
+    r.every = Math.max(0.9, r.every / 1.1);
+    sfx.bad();
+    removeLetter(L, 'nope-out');
+    $('#rush-garbage').style.height = r.garbagePx + 'px';
+    $('#rush-board').classList.remove('shake');
+    void $('#rush-board').offsetWidth;
+    $('#rush-board').classList.add('shake');
+    for (let c = 0; c < RUSH_COLS; c++) restack(c);
+    const left = RUSH_MAX_WRONG - r.wrong;
+    $('#rush-tip').textContent = left > 0
+      ? `❗ 點錯了！速度變快 ×${(r.speed / (r.cell * (game.level >= 10 ? 0.9 : 0.7))).toFixed(1)}，再錯 ${left} 次就失敗`
+      : '❗ 碰到懲罰線了！';
+    if (overLimit()) rushFail();
   }
 
   function onRushTap(e) {
@@ -588,14 +640,7 @@
     e.preventDefault();
     const L = r.letters.find((x) => x.el === el);
     if (!L) return;
-    if (L.ch !== r.answer[r.pos]) {
-      game.mistakes++;
-      sfx.bad();
-      el.classList.remove('nope');
-      void el.offsetWidth;
-      el.classList.add('nope');
-      return;
-    }
+    if (L.ch !== r.answer[r.pos]) return rushPenalty(L);
     removeLetter(L, 'got');
     sfx.tap();
     r.pos++;
@@ -610,7 +655,7 @@
     sfx.good();
     toast(pick(CHEERS) + ' ⭐');
     setTimeout(() => speak(r.answer), 250);
-    // 成功就把堆積的字母全部消掉
+    // 拼完就把掉下來的字母全部消掉（懲罰方塊留著）
     r.letters.forEach((L) => { L.el.classList.add('pop'); setTimeout(() => L.el.remove(), 350); });
     r.letters = [];
     r.stacks.forEach((s) => { s.length = 0; });
@@ -628,12 +673,24 @@
     sfx.bad();
     setTimeout(() => speak('Oh no! Try again!'), 300);
     $('#rush-board').classList.add('shake');
+    // 這一回合的單字，依「原本在哪一關學」分組，提醒小朋友去複習
+    const groups = {};
+    game.items.forEach(([en, zh]) => {
+      const n = wordLevel(en);
+      (groups[n] = groups[n] || []).push(`<b>${esc(en)}</b> ${esc(zh)}`);
+    });
+    const review = Object.keys(groups).map(Number).sort((a, b) => a - b).map((n) => `
+      <li>
+        <span>第 ${n} 關「${esc(levels('vocab')[n - 1].name)}」：${groups[n].join('、')}</span>
+        <button class="mini-btn" data-action="start" data-mode="vocab" data-level="${n}">去第 ${n} 關複習</button>
+      </li>`).join('');
     later(() => {
       app.innerHTML = `
         <div class="panel result">
           <img class="result-img" src="assets/img/tryagain.webp" alt="">
-          <h2>字母堆到中線了！</h2>
-          <p>完成了 ${done} / ${game.items.length} 個單字，再試一次吧！</p>
+          <h2>碰到懲罰線了！</h2>
+          <p>完成了 ${done} / ${game.items.length} 個單字。先去複習這些單字，再回來挑戰吧！</p>
+          <ul class="review-list">${review}</ul>
           <div class="actions">
             <button class="big-btn" data-action="start" data-mode="vocab" data-level="${game.level}">🔁 再試一次</button>
             <button class="big-btn blue" data-action="map" data-mode="vocab">🗺️ 關卡地圖</button>
