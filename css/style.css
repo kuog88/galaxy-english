@@ -337,6 +337,23 @@ main {
 .result .stars .off { color: var(--paper-deep); text-shadow: none; }
 .result p { color: var(--muted); margin: 6px 0; }
 
+/* ---------- 插圖 ---------- */
+.mascot img {
+  width: 150px; height: 150px; border-radius: 50%; object-fit: cover; display: block;
+  border: 4px solid var(--card); box-shadow: var(--shadow);
+}
+.mode-img {
+  width: 120px; height: 120px; border-radius: 22px; object-fit: cover;
+  border: 3px solid var(--card); box-shadow: 0 4px 10px rgba(110, 90, 60, .15);
+}
+.planet .orb { position: relative; overflow: hidden; }
+.planet .orb img { width: 100%; height: 100%; object-fit: cover; }
+.planet.locked .orb::after { z-index: 1; }
+.result-img {
+  width: 200px; height: 200px; border-radius: 28px; object-fit: cover;
+  border: 4px solid var(--card); box-shadow: var(--shadow);
+}
+
 /* ---------- 提示訊息 ---------- */
 .toast {
   position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); z-index: 50;

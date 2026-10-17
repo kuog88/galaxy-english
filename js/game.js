@@ -178,18 +178,18 @@
         <button class="sticker s2" data-action="sticker">🌻</button>
         <button class="sticker s3" data-action="sticker">🐞</button>
         <button class="sticker s4" data-action="sticker">🍄</button>
-        <button class="mascot" data-action="sticker" title="點我打招呼">🐈</button>
+        <button class="mascot" data-action="sticker" title="點我打招呼"><img src="assets/img/mascot.webp" alt="小貓吉祥物"></button>
         <h1>銀河英語闖關</h1>
         <p class="sub">點點看可愛的圖示，選一座小島出發吧！</p>
         ${cont}
         <div class="mode-grid">
           <button class="mode-card vocab" data-action="map" data-mode="vocab">
-            <span class="mode-icon">🎈</span><b>單字星球</b>
+            <img class="mode-img" src="assets/img/balloon.webp" alt=""><b>單字星球</b>
             <small>聽發音・諧音記憶・拼字</small>
             <span class="mode-prog">${prog('vocab')}</span>
           </button>
           <button class="mode-card sentence" data-action="map" data-mode="sentence">
-            <span class="mode-icon">🪁</span><b>句型星球</b>
+            <img class="mode-img" src="assets/img/kite.webp" alt=""><b>句型星球</b>
             <small>聽句子・選出正確回答</small>
             <span class="mode-prog">${prog('sentence')}</span>
           </button>
@@ -213,7 +213,7 @@
       return `
         <button class="planet ${locked ? 'locked' : ''} ${current ? 'current' : ''}"
                 data-action="${locked ? 'locked' : 'start'}" data-mode="${mode}" data-level="${n}">
-          <span class="orb" style="background:${lv.color}">${lv.icon}</span>
+          <span class="orb" style="background:${lv.color}">${lv.img ? `<img src="assets/img/${lv.img}.webp" alt="">` : lv.icon}</span>
           <span class="lv">第 ${n} 關</span>
           <span class="nm">${esc(lv.name)}</span>
           <span class="st">${locked ? '' : '★'.repeat(stars) + '☆'.repeat(3 - stars)}</span>
@@ -631,7 +631,7 @@
     later(() => {
       app.innerHTML = `
         <div class="panel result">
-          <div class="big-emoji">🍂</div>
+          <img class="result-img" src="assets/img/tryagain.webp" alt="">
           <h2>字母堆到中線了！</h2>
           <p>完成了 ${done} / ${game.items.length} 個單字，再試一次吧！</p>
           <div class="actions">
@@ -720,7 +720,7 @@
     setTimeout(() => speak(stars === 3 ? 'Perfect! You are a star!' : 'Well done!'), 400);
     app.innerHTML = `
       <div class="panel result">
-        <div class="big-emoji">${allDone && !hasNext ? '🏆' : stars === 3 ? '🌟' : '🎉'}</div>
+        <img class="result-img" src="assets/img/win.webp" alt="">
         <h2>${allDone && !hasNext ? '全部星球都征服了！' : '過關成功！'}</h2>
         <div class="stars">${'★'.repeat(stars)}<span class="off">${'★'.repeat(3 - stars)}</span></div>
         <p>⏱ 用時 ${fmtTime(elapsed)}　❌ 錯誤 ${mistakes} 次</p>
