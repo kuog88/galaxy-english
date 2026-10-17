@@ -150,6 +150,7 @@
   function leaveLevel() {
     clearTimeout(game.pending);
     if (game.rush) rushStop();
+    document.querySelectorAll('.clear-video').forEach((v) => v.remove());
     game.busy = false;
     stopTimer();
     if (hasTTS) speechSynthesis.cancel();
@@ -773,6 +774,52 @@
 
     const allDone = Object.keys(s.stars).length >= total;
     const hasNext = level < total;
+    playClearVideo(clearVideoName(mode, level), () => showResult({ mode, level, stars, elapsed, mistakes, allDone, hasNext }));
+  }
+
+  // ---------- 過關動畫（每關一段 2～3 秒的小影片，魔王關有自己的） ----------
+  const CLEAR_VIDEOS = ['fruit', 'pets', 'jungle', 'rainbow', 'school', 'food',
+    'body', 'family', 'sky', 'toys', 'sports', 'mood'];
+
+  function clearVideoName(mode, level) {
+    if (mode === 'vocab') {
+      const lv = levels('vocab')[level - 1];
+      if (lv.video) return lv.video;
+      const n = levels('vocab').slice(0, level).filter((l) => !l.review).length; // 第幾個一般關
+      return CLEAR_VIDEOS[(n - 1) % CLEAR_VIDEOS.length];
+    }
+    return CLEAR_VIDEOS[(level - 1) % CLEAR_VIDEOS.length]; // 句型關重複使用
+  }
+
+  function playClearVideo(name, then) {
+    const ov = document.createElement('div');
+    ov.className = 'clear-video';
+    ov.innerHTML = `
+      <div class="clear-video-box">
+        <video src="assets/video/${name}.mp4" playsinline preload="auto"></video>
+        <button class="skip-btn" type="button">跳過 ⏭</button>
+      </div>`;
+    document.body.appendChild(ov);
+    const v = ov.querySelector('video');
+    v.muted = !soundOn;
+    let finished = false;
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      // 已經離開關卡（例如按了回首頁）就不再顯示結果
+      if (!ov.isConnected) return;
+      ov.remove();
+      then();
+    };
+    v.addEventListener('ended', done);
+    v.addEventListener('error', done);
+    ov.querySelector('.skip-btn').addEventListener('click', done);
+    // 有些瀏覽器不讓有聲影片自動播放，就改成靜音播放
+    v.play().catch(() => { v.muted = true; v.play().catch(done); });
+    setTimeout(done, 8000); // 保險：影片卡住也會繼續
+  }
+
+  function showResult({ mode, level, stars, elapsed, mistakes, allDone, hasNext }) {
     sfx.win();
     setTimeout(() => speak(stars === 3 ? 'Perfect! You are a star!' : 'Well done!'), 400);
     app.innerHTML = `
