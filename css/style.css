@@ -147,8 +147,10 @@ main {
 .big-btn.ghost { background: var(--card); border: 2px solid var(--line); box-shadow: 0 5px 0 var(--line); }
 .continue { margin: 0 0 22px; }
 
+.rpg-entry { margin-top: 22px; text-decoration: none; }
+
 .reset-link {
-  margin-top: 28px; background: none; color: var(--muted); font-size: .85rem; text-decoration: underline;
+  display: block; margin: 28px auto 0; background: none; color: var(--muted); font-size: .85rem; text-decoration: underline;
 }
 
 /* ---------- 地圖 ---------- */

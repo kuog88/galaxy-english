@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>銀河英語冒險</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Huninn&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/rpg.css">
+</head>
+<body class="rpg-page">
+  <header class="topbar">
+    <button id="btn-home" class="icon-btn" title="回一般闖關">🏠</button>
+    <div id="top-title">⚔️ 銀河英語冒險</div>
+    <div class="top-right">
+      <button id="btn-sound" class="icon-btn" title="聲音開關">🔊</button>
+    </div>
+  </header>
+
+  <main class="rpg">
+    <!-- 上半部：冒險舞台 -->
+    <section id="stage" class="stage" aria-label="冒險舞台">
+      <div id="bg" class="bg"></div>
+      <div class="hud">
+        <div class="hud-side">
+          <span id="hero-name" class="hud-name"></span>
+          <div id="hero-hp" class="hp hero-hp"><i></i></div>
+        </div>
+        <div id="hud-mon" class="hud-side right hidden">
+          <span id="mon-name" class="hud-name"></span>
+          <div id="mon-hp" class="hp mon-hp"><i></i></div>
+        </div>
+      </div>
+      <div id="stage-label" class="stage-label"></div>
+      <div id="hero" class="actor hero" data-pose="idle"></div>
+      <div id="monster" class="actor monster hidden"></div>
+      <div id="fx" class="fx"></div>
+      <div id="overlay" class="overlay hidden"></div>
+    </section>
+
+    <!-- 下半部：操作面板（拼字格子／句型選擇） -->
+    <section id="panel" class="rpg-panel" aria-live="polite"></section>
+  </main>
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="js/data.js"></script>
+  <script src="js/core.js"></script>
+  <script src="js/rpg/manifest.js"></script>
+  <script src="js/rpg/fsm.js"></script>
+  <script src="js/rpg/assets.js"></script>
+  <script src="js/rpg/juice.js"></script>
+  <script src="js/rpg/main.js"></script>
+</body>
+</html>
