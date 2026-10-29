@@ -14,17 +14,8 @@
   const $ = (s) => document.querySelector(s);
   const app = $('#app');
 
-  // ---------- 小工具 ----------
-  function shuffle(arr) {
-    const a = arr.slice();
-    for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a;
-  }
-  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // 共用工具（亂數、語音、音效、拼字格子）在 js/core.js
+  const { shuffle, pick, esc, speak, stopSpeech, sfx, sound } = window.GE;
   const levels = (mode) => DATA[mode];
 
   // ---------- 進度記憶 (localStorage) ----------
@@ -42,61 +33,6 @@
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* 無痕模式可能不能存 */ }
   }
   let save = loadSave();
-  let soundOn = true;
-  try { soundOn = localStorage.getItem(SAVE_KEY + '.sound') !== 'off'; } catch (e) { /* ignore */ }
-
-  // ---------- 語音 (瀏覽器內建朗讀) ----------
-  let voices = [];
-  const hasTTS = 'speechSynthesis' in window;
-  function loadVoices() { voices = speechSynthesis.getVoices(); }
-  if (hasTTS) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
-
-  function pickVoice(lang) {
-    const prefs = lang.startsWith('en') ? ['en-US', 'en-GB', 'en'] : ['zh-TW', 'zh-HK', 'zh-CN', 'zh'];
-    for (const p of prefs) {
-      const list = voices.filter((v) => v.lang.replace('_', '-').startsWith(p));
-      if (list.length) return list.find((v) => /Google|Natural|Online/i.test(v.name)) || list[0];
-    }
-    return null;
-  }
-  function speak(text, lang = 'en-US', rate = 0.7) {
-    if (!soundOn || !hasTTS) return;
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = lang;
-    u.rate = rate;
-    const v = pickVoice(lang);
-    if (v) u.voice = v;
-    speechSynthesis.speak(u);
-  }
-
-  // ---------- 音效 ----------
-  let actx = null;
-  function beep(freqs, dur = 0.12, type = 'sine') {
-    if (!soundOn) return;
-    try {
-      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-      let t = actx.currentTime;
-      freqs.forEach((f) => {
-        const o = actx.createOscillator();
-        const g = actx.createGain();
-        o.type = type;
-        o.frequency.value = f;
-        g.gain.setValueAtTime(0.12, t);
-        g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-        o.connect(g).connect(actx.destination);
-        o.start(t);
-        o.stop(t + dur);
-        t += dur * 0.8;
-      });
-    } catch (e) { /* 不支援就安靜 */ }
-  }
-  const sfx = {
-    tap: () => beep([660], 0.06, 'triangle'),
-    good: () => beep([523, 659, 784], 0.12),
-    bad: () => beep([240, 180], 0.15, 'square'),
-    win: () => beep([523, 659, 784, 1046], 0.16),
-  };
 
   // ---------- 計時器 (像 NYT Crossword) ----------
   const timerEl = $('#timer');
@@ -150,10 +86,11 @@
   function leaveLevel() {
     clearTimeout(game.pending);
     if (game.rush) rushStop();
+    dropSpell();
     document.querySelectorAll('.clear-video').forEach((v) => v.remove());
     game.busy = false;
     stopTimer();
-    if (hasTTS) speechSynthesis.cancel();
+    stopSpeech();
   }
 
   // =====================================================
@@ -195,6 +132,7 @@
             <span class="mode-prog">${prog('sentence')}</span>
           </button>
         </div>
+        <a class="big-btn pink rpg-entry" href="rpg.html">⚔️ 冒險模式：邊跑邊打怪</a>
         <button class="reset-link" data-action="reset">清除闖關紀錄</button>
       </section>`;
   }
@@ -259,6 +197,7 @@
   }
 
   function nextQuestion() {
+    dropSpell();
     game.idx++;
     game.busy = false;
     showQuestion();
@@ -299,141 +238,26 @@
   // =====================================================
   const ALPHABET = 'abcdefghijklmnopqrstuvwxyz';
 
-  function setupSpell() {
-    const w = curWord();
-    const answer = w.en.toLowerCase();
-    const cells = Array(answer.length).fill(null);
-    // 隨機先給一個字母（不固定在開頭，才不會太好猜）
-    const given = Math.floor(Math.random() * answer.length);
-    cells[given] = { ch: answer[given], locked: true };
-    const correct = answer.slice(0, given) + answer.slice(given + 1);
-    const letters = correct.split('');
-    // 第 4 關起多 1 個干擾字母，第 9 關起多 2 個（干擾字母會被打散到隨機位置）
-    const decoys = game.level >= 9 ? 2 : game.level >= 4 ? 1 : 0;
-    for (let i = 0; i < decoys; i++) letters.push(pick(ALPHABET.split('')));
-    let order = shuffle(letters);
-    for (let t = 0; t < 10 && letters.length > 1 && order.join('').startsWith(correct); t++) order = shuffle(letters);
-    game.spell = {
-      answer, cells,
-      tiles: order.map((ch, id) => ({ id, ch, used: false })),
-    };
-  }
-
   function showSpell() {
-    setupSpell();
-    renderSpell();
-  }
-
-  function renderSpell(state) {
-    const w = curWord();
-    const sp = game.spell;
-    const firstEmpty = sp.cells.findIndex((c) => !c);
-    const cellsHtml = sp.cells.map((c, i) => {
-      const cls = ['cell'];
-      if (c && c.locked) cls.push(c.hint ? 'hinted' : 'locked');
-      if (state === 'ok') cls.push('ok');
-      else if (state === 'bad') cls.push('bad');
-      else if (i === firstEmpty) cls.push('active');
-      return `<button class="${cls.join(' ')}" data-action="cell" data-i="${i}">
-        ${i === 0 ? '<span class="num">1</span>' : ''}${c ? esc(c.ch) : ''}</button>`;
-    }).join('');
-    const tilesHtml = sp.tiles.map((t) =>
-      `<button class="tile ${t.used ? 'used' : ''}" data-action="tile" data-id="${t.id}">${esc(t.ch)}</button>`).join('');
-    app.innerHTML = `
-      ${dotsHtml()}
-      <div class="panel">
-        <div class="clue-bar">
-          <span class="clue-num">1A</span>
-          <span class="clue-emoji">${w.icon}</span>
-          <b>${esc(w.zh)}</b>
-          <small>${sp.answer.length} 個字母</small>
-        </div>
-        <div class="grid ${state === 'bad' ? 'shake' : ''}" style="--n:${sp.answer.length}">${cellsHtml}</div>
-        <div class="tiles">${tilesHtml}</div>
-      </div>
-      <div class="actions">
-        <button class="big-btn blue" data-action="say-word">🔊 聽發音</button>
-        <button class="big-btn pink" data-action="hint">💡 提示</button>
-        <button class="big-btn ghost" data-action="clear">↺ 重來</button>
-      </div>`;
-  }
-
-  function placeTile(id) {
-    const sp = game.spell;
-    const tile = sp.tiles.find((t) => t.id === id);
-    const slot = sp.cells.findIndex((c) => !c);
-    if (!tile || tile.used || slot < 0) return;
-    tile.used = true;
-    sp.cells[slot] = { ch: tile.ch, tileId: tile.id };
-    sfx.tap();
-    afterChange();
-  }
-
-  function removeCell(i) {
-    const sp = game.spell;
-    const c = sp.cells[i];
-    if (!c || c.locked) return;
-    sp.tiles.find((t) => t.id === c.tileId).used = false;
-    sp.cells[i] = null;
-    sfx.tap();
-    renderSpell();
-  }
-
-  function clearSpell() {
-    const sp = game.spell;
-    sp.cells.forEach((c, i) => {
-      if (c && !c.locked) {
-        sp.tiles.find((t) => t.id === c.tileId).used = false;
-        sp.cells[i] = null;
-      }
+    app.innerHTML = `${dotsHtml()}<div id="spell"></div>`;
+    game.spell = GE.SpellGrid($('#spell'), {
+      word: curWord(),
+      // 第 4 關起多 1 個干擾字母，第 9 關起多 2 個（干擾字母會被打散到隨機位置）
+      decoys: game.level >= 9 ? 2 : game.level >= 4 ? 1 : 0,
+      onHint: () => { game.mistakes++; },
+      onWrong: () => { game.mistakes++; },
+      onSolved: () => {
+        game.busy = true;
+        toast(pick(CHEERS) + ' ⭐');
+        setTimeout(() => speak(curWord().en), 300);
+        later(nextQuestion, 1700);
+      },
     });
   }
 
-  function giveHint() {
-    const sp = game.spell;
-    // 找到第一個「空的或放錯」的格子
-    const target = sp.cells.findIndex((c, k) => !c || (!c.locked && c.ch !== sp.answer[k]));
-    if (target < 0) return;
-    const need = sp.answer[target];
-    // 先把該格清空
-    const cur = sp.cells[target];
-    if (cur && !cur.locked) {
-      sp.tiles.find((t) => t.id === cur.tileId).used = false;
-      sp.cells[target] = null;
-    }
-    // 找一個沒用過的正確字母；沒有就從後面格子借回來
-    let tile = sp.tiles.find((t) => !t.used && t.ch === need);
-    if (!tile) {
-      const j = sp.cells.findIndex((c, k) => k > target && c && !c.locked && c.ch === need);
-      if (j < 0) return;
-      tile = sp.tiles.find((t) => t.id === sp.cells[j].tileId);
-      sp.cells[j] = null;
-    }
-    tile.used = true;
-    sp.cells[target] = { ch: need, tileId: tile.id, locked: true, hint: true };
-    game.mistakes++;
-    beep([880, 990], 0.08, 'triangle');
-    afterChange();
-  }
-
-  function afterChange() {
-    const sp = game.spell;
-    if (sp.cells.some((c) => !c)) return renderSpell();
-    const guess = sp.cells.map((c) => c.ch).join('');
-    if (guess === sp.answer) {
-      game.busy = true;
-      renderSpell('ok');
-      sfx.good();
-      toast(pick(CHEERS) + ' ⭐');
-      setTimeout(() => speak(curWord().en), 300);
-      later(nextQuestion, 1700);
-    } else {
-      game.mistakes++;
-      game.busy = true;
-      renderSpell('bad');
-      sfx.bad();
-      later(() => { clearSpell(); game.busy = false; renderSpell(); }, 800);
-    }
+  function dropSpell() {
+    if (game.spell) game.spell.destroy();
+    game.spell = null;
   }
 
   // =====================================================
@@ -801,7 +625,7 @@
       </div>`;
     document.body.appendChild(ov);
     const v = ov.querySelector('video');
-    v.muted = !soundOn;
+    v.muted = !sound.on;
     let finished = false;
     const done = () => {
       if (finished) return;
@@ -884,18 +708,6 @@
         sfx.tap();
         showSpell();
         break;
-      case 'tile':
-        if (!game.busy) placeTile(Number(el.dataset.id));
-        break;
-      case 'cell':
-        if (!game.busy) removeCell(Number(el.dataset.i));
-        break;
-      case 'hint':
-        if (!game.busy) giveHint();
-        break;
-      case 'clear':
-        if (!game.busy) { clearSpell(); renderSpell(); }
-        break;
       case 'say-q':
         if (el.classList.contains('q-emoji')) bounceEl(el);
         speak(game.items[game.idx][0]);
@@ -916,11 +728,9 @@
   $('#btn-home').addEventListener('click', () => { sfx.tap(); renderHome(); });
 
   const soundBtn = $('#btn-sound');
-  function syncSoundBtn() { soundBtn.textContent = soundOn ? '🔊' : '🔇'; }
+  function syncSoundBtn() { soundBtn.textContent = sound.on ? '🔊' : '🔇'; }
   soundBtn.addEventListener('click', () => {
-    soundOn = !soundOn;
-    try { localStorage.setItem(SAVE_KEY + '.sound', soundOn ? 'on' : 'off'); } catch (e) { /* ignore */ }
-    if (!soundOn && hasTTS) speechSynthesis.cancel();
+    sound.set(!sound.on);
     syncSoundBtn();
   });
   syncSoundBtn();
