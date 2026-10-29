@@ -1,37 +1,1152 @@
-<!doctype html>
-<html lang="zh-Hant">
+<!DOCTYPE html>
+<html lang="zh-TW">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-  <title>銀河英語闖關</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Huninn&display=swap">
-  <link rel="stylesheet" href="css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>單字勇者：記憶宮殿鍛造記</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel-bg: #161b22;
+      --card-bg: #21262d;
+      --accent: #ff4757;
+      --gold: #ffa502;
+      --green: #2ed573;
+      --blue: #1e90ff;
+      --text: #f0f6fc;
+      --text-dim: #8b949e;
+      --border: #30363d;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      min-height: 100dvh;
+      overflow: hidden;
+    }
+
+    #game-container {
+      width: 100%;
+      max-width: 450px;
+      height: 100vh;
+      height: 100dvh;
+      max-height: 880px;
+      background: var(--panel-bg);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      box-shadow: 0 0 25px rgba(0,0,0,0.8);
+      overflow: hidden;
+    }
+
+    /* 頂部宮殿導航 */
+    header {
+      background: #121820;
+      border-bottom: 2px solid var(--border);
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 2;
+    }
+    .palace-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .palace-select-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    select.chapter-dropdown {
+      background: #21262d;
+      color: var(--gold);
+      border: 1px solid var(--border);
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-weight: 800;
+      font-size: 0.95rem;
+      outline: none;
+    }
+    .stage-list-toggle-btn {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid var(--border);
+      color: #fff;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .progress-track {
+      width: 100%;
+      height: 8px;
+      background: #090d12;
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #1e90ff, #2ed573);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    /* 關卡抽屜選擇器 (可回溯重刷) */
+    #stage-drawer {
+      position: absolute;
+      top: 60px;
+      left: 0;
+      right: 0;
+      background: rgba(18, 24, 32, 0.96);
+      backdrop-filter: blur(8px);
+      border-bottom: 2px solid var(--border);
+      padding: 12px;
+      z-index: 9;
+      display: none;
+      flex-direction: column;
+      max-height: 280px;
+      overflow-y: auto;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+    }
+    .drawer-title {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .stage-nodes-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .stage-node-btn {
+      background: var(--card-bg);
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 4px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      cursor: pointer;
+      color: var(--text);
+      font-size: 0.75rem;
+      transition: all 0.15s;
+    }
+    .stage-node-btn.cleared {
+      opacity: 0.5;
+      background: #11151a;
+      border-color: #262c36;
+    }
+    .stage-node-btn.current {
+      border-color: var(--gold);
+      background: rgba(255, 165, 2, 0.15);
+      opacity: 1;
+    }
+
+    /* 場景區域 */
+    .scene-view {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* 戰鬥面板 */
+    #battle-scene {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 14px;
+      height: 100%;
+    }
+
+    .enemy-stage {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 5px;
+    }
+    .stage-badge {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+    .stage-badge.repeat-tag {
+      color: #38ada9;
+      font-weight: bold;
+    }
+    .enemy-hp-container {
+      width: 180px;
+      height: 14px;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1.5px solid #485460;
+      margin-bottom: 6px;
+      position: relative;
+    }
+    .enemy-hp-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #ff4757, #ff6b81);
+      width: 100%;
+      transition: width 0.25s ease-out;
+    }
+    .enemy-hp-num {
+      position: absolute;
+      width: 100%;
+      text-align: center;
+      top: 0;
+      left: 0;
+      font-size: 0.65rem;
+      line-height: 14px;
+      font-weight: bold;
+      color: #fff;
+    }
+    .enemy-sprite {
+      font-size: 5rem;
+      transition: transform 0.1s ease;
+      filter: drop-shadow(0 6px 12px rgba(0,0,0,0.6));
+    }
+    .enemy-hit {
+      filter: brightness(2.5) drop-shadow(0 0 15px #ff4757) !important;
+      transform: scale(0.92) translateY(5px);
+    }
+
+    /* 勇者裝備列 */
+    .player-stats-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 6px 12px;
+      background: rgba(0,0,0,0.4);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      font-size: 0.8rem;
+    }
+    .stat-badge b { color: var(--gold); }
+
+    /* 拼字作答槽 */
+    .puzzle-center {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+    }
+    .chinese-bubble {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: #70a1ff;
+      margin-bottom: 12px;
+    }
+    .slots-box {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+      flex-wrap: wrap;
+      min-height: 52px;
+    }
+    .slot {
+      width: 42px;
+      height: 48px;
+      background: var(--card-bg);
+      border: 2px solid var(--border);
+      border-bottom: 3.5px solid #747d8c;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      font-weight: 900;
+      color: #fff;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .slot.active { border-color: #70a1ff; }
+    .slot.filled { border-bottom-color: var(--green); color: var(--green); }
+
+    /* 亂序字母按鈕池 */
+    .letters-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      max-width: 330px;
+      margin-bottom: 8px;
+    }
+    .letter-key {
+      width: 48px;
+      height: 50px;
+      background: #2f3542;
+      border: 1px solid #57606f;
+      border-bottom: 4px solid #1e272e;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 1.35rem;
+      font-weight: 900;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .letter-key.used {
+      opacity: 0.15;
+      pointer-events: none;
+      transform: translateY(3px);
+      border-bottom: 1px solid #1e272e;
+    }
+
+    /* 傷害飄字 */
+    .float-dmg {
+      position: absolute;
+      top: 32%;
+      font-size: 2.2rem;
+      font-weight: 900;
+      color: #fffa65;
+      text-shadow: 2px 2px 0px #ff3838;
+      animation: dmgFly 0.65s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+      pointer-events: none;
+      z-index: 5;
+    }
+    @keyframes dmgFly {
+      0% { transform: translateY(0) scale(0.6); opacity: 0; }
+      20% { transform: translateY(-15px) scale(1.3); opacity: 1; }
+      100% { transform: translateY(-55px) scale(1); opacity: 0; }
+    }
+
+    /* 鍛造工坊面板 */
+    #forge-scene {
+      display: none;
+      flex-direction: column;
+      padding: 14px;
+      height: 100%;
+      overflow-y: auto;
+    }
+    .anvil-banner {
+      background: linear-gradient(145deg, #1e272e, #13171c);
+      border: 2px dashed #485460;
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+      margin-bottom: 14px;
+    }
+    .anvil-icon { font-size: 2.8rem; }
+    .forge-preview {
+      margin: 10px 0;
+      min-height: 42px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .forge-cta-btn {
+      background: linear-gradient(90deg, #ffa502, #ff7f50);
+      color: #000;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 20px;
+      font-size: 1rem;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .forge-cta-btn:disabled { background: #485460; color: #808e9b; cursor: not-allowed; }
+    .cards-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding-bottom: 20px;
+    }
+    .word-card {
+      background: var(--card-bg);
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .word-card.picked { border-color: var(--gold); background: rgba(255, 165, 2, 0.1); }
+    .word-card .card-w { font-weight: 800; color: #70a1ff; }
+    .word-card .card-ch { font-size: 0.8rem; color: var(--text-dim); }
+
+    /* 結算開箱 Modal */
+    .modal-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(4px);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 10;
+    }
+    .chest-graphic {
+      font-size: 5rem;
+      cursor: pointer;
+      animation: chestHop 0.8s infinite alternate ease-in-out;
+    }
+    @keyframes chestHop {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(-12px); }
+    }
+    .loot-card {
+      text-align: center;
+      display: none;
+    }
+    .btn-action {
+      background: var(--green);
+      color: #fff;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 20px;
+      font-weight: 800;
+      font-size: 1rem;
+      cursor: pointer;
+      margin-top: 15px;
+    }
+
+    /* 底部導覽欄 */
+    nav {
+      height: 52px;
+      background: #121820;
+      border-top: 2px solid var(--border);
+      display: flex;
+    }
+    nav button {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      font-size: 0.9rem;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    nav button.active {
+      color: var(--gold);
+      background: var(--panel-bg);
+      border-top: 3px solid var(--gold);
+    }
+
+    /* 震動效果 */
+    .screen-shake { animation: shakeEffect 0.15s ease-in-out; }
+    @keyframes shakeEffect {
+      0% { transform: translate(0, 0); }
+      20% { transform: translate(-6px, 3px); }
+      40% { transform: translate(5px, -4px); }
+      60% { transform: translate(-3px, 2px); }
+      100% { transform: translate(0, 0); }
+    }
+  </style>
 </head>
 <body>
-  <div id="scenery" aria-hidden="true">
-    <svg class="hills" viewBox="0 0 1200 160" preserveAspectRatio="none">
-      <path d="M0 90 C 200 30, 380 40, 560 85 S 900 40, 1200 70 L1200 160 L0 160Z" fill="#cfe0bf"/>
-      <path d="M0 120 C 220 80, 420 95, 640 120 S 1000 85, 1200 110 L1200 160 L0 160Z" fill="#b3cf9f"/>
-      <path d="M0 145 C 300 125, 600 140, 900 132 S 1100 138, 1200 135 L1200 160 L0 160Z" fill="#98bd86"/>
-    </svg>
-  </div>
 
-  <header class="topbar">
-    <button id="btn-home" class="icon-btn" title="回首頁">🏠</button>
-    <div id="top-title">銀河英語闖關</div>
-    <div class="top-right">
-      <span id="timer" class="timer hidden">0:00</span>
-      <button id="btn-sound" class="icon-btn" title="聲音開關">🔊</button>
+<div id="game-container">
+  <!-- 頂部宮殿導覽 -->
+  <header>
+    <div class="palace-bar">
+      <div class="palace-select-wrapper">
+        <select id="chapter-dropdown" class="chapter-dropdown" onchange="onChapterChange(this.value)"></select>
+      </div>
+      <button class="stage-list-toggle-btn" id="btn-toggle-drawer">🗺️ 關卡清單</button>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="palace-progress"></div>
     </div>
   </header>
 
-  <main id="app"></main>
-  <div id="toast" class="toast hidden"></div>
+  <!-- 關卡清單抽屜（支援回溯重刷） -->
+  <div id="stage-drawer">
+    <div class="drawer-title">
+      <span>點選關卡可直接回顧挑戰 (已攻克無掉落)</span>
+      <span id="drawer-stats" style="color:var(--gold);">0 / 0</span>
+    </div>
+    <div class="stage-nodes-grid" id="stage-nodes-container"></div>
+  </div>
 
-  <script src="js/data.js"></script>
-  <script src="js/game.js"></script>
-<script src="https://kuog88.github.io/home-button.js" defer></script>
+  <!-- 場景切換區 -->
+  <div class="scene-view">
+    <!-- 戰鬥場景 -->
+    <div id="battle-scene">
+      <div class="enemy-stage">
+        <div class="stage-badge" id="ui-stage-tag">關卡 1-1</div>
+        <div class="enemy-hp-container">
+          <div class="enemy-hp-fill" id="enemy-hp-bar"></div>
+          <div class="enemy-hp-num" id="enemy-hp-text">100 / 100</div>
+        </div>
+        <div class="enemy-sprite" id="enemy-avatar">🐺</div>
+      </div>
+
+      <div class="player-stats-bar">
+        <div>🗡️ <b id="ui-weap-name">初心木劍</b></div>
+        <div>💥 傷: <b id="ui-weap-atk">20</b></div>
+        <div>⏳ 餘: <b id="ui-weap-dur">∞</b></div>
+      </div>
+
+      <div class="puzzle-center">
+        <div class="chinese-bubble" id="puzzle-cn">載入題庫中...</div>
+        <div class="slots-box" id="puzzle-slots"></div>
+      </div>
+
+      <div class="pool-area">
+        <div class="letters-grid" id="pool-grid"></div>
+      </div>
+    </div>
+
+    <!-- 鐵砧工坊場景 -->
+    <div id="forge-scene">
+      <div class="anvil-banner">
+        <div class="anvil-icon">⚒️</div>
+        <h3 style="color: var(--gold);">字母鐵砧工坊</h3>
+        <p style="font-size: 0.75rem; color: var(--text-dim); margin-top: 4px;">
+          注入單字淬火為武器（已鍛造的單字素材將會消耗消失）
+        </p>
+        <div class="forge-preview" id="forge-preview-box">
+          <span style="font-size: 0.85rem; color: #888;">請在下方背包選擇單字素材</span>
+        </div>
+        <button class="forge-cta-btn" id="forge-exec-btn" disabled>開始淬火鍛造</button>
+      </div>
+
+      <div style="font-size:0.85rem; color:var(--text-dim); margin-bottom:8px; display:flex; justify-content:space-between;">
+        <span>🎒 單字素材背包</span>
+        <span>總數: <b id="ui-bag-count" style="color:var(--gold);">0</b></span>
+      </div>
+      <div class="cards-grid" id="inventory-cards"></div>
+    </div>
+  </div>
+
+  <!-- 結算開箱 Modal -->
+  <div class="modal-overlay" id="loot-modal">
+    <!-- 首通寶箱 -->
+    <div class="chest-graphic" id="chest-clicker">🎁</div>
+    <p id="chest-tip" style="color: #fff; margin-top: 10px; font-weight: bold;">首通領主！點擊寶箱領取單字！</p>
+
+    <!-- 首通卡片展示 -->
+    <div class="loot-card" id="loot-details">
+      <h2 style="color: var(--gold); margin-bottom: 6px;">🎉 首通獲得新單字素材！</h2>
+      <div id="loot-word-title" style="font-size: 1.8rem; font-weight: 900; color: #70a1ff;">APPLE</div>
+      <div id="loot-word-cn" style="color: #ccc; margin-bottom: 8px;">蘋果</div>
+      <p style="font-size: 0.8rem; color: var(--green);">★ 已收錄至鐵砧背包，可鑄造兵器！</p>
+      <button class="btn-action" id="btn-next-round">前往下一關</button>
+    </div>
+
+    <!-- 複習重刷無掉落展示 -->
+    <div class="loot-card" id="repeat-clear-details">
+      <h2 style="color: #38ada9; margin-bottom: 6px;">⚔️ 複習討伐成功！</h2>
+      <div id="repeat-word-title" style="font-size: 1.8rem; font-weight: 900; color: #70a1ff;">APPLE</div>
+      <p style="font-size: 0.85rem; color: #bbb; margin-top: 6px;">本關卡先前已領取過單字獎勵。<br>（複習模式不重複掉落素材）</p>
+      <button class="btn-action" id="btn-repeat-next">繼續下一關</button>
+    </div>
+  </div>
+
+  <!-- 底部導覽 -->
+  <nav>
+    <button id="nav-btn-fight" class="active">⚔️ 討伐闖關</button>
+    <button id="nav-btn-forge">⚒️ 鐵砧鍛造</button>
+  </nav>
+</div>
+
+<script>
+  /* ========================================================
+     1. 記憶宮殿與關卡資料 (每詞皆為獨立關卡)
+     ======================================================== */
+  const PALACES = [
+    {
+      id: 1,
+      name: "🏰 第一殿：晨曦森林",
+      diff: "3~4 字母",
+      boss: "🐺",
+      stages: [
+        { id: "1-1", word: "CAT", ch: "貓咪" },
+        { id: "1-2", word: "DOG", ch: "小狗" },
+        { id: "1-3", word: "PIG", ch: "小豬" },
+        { id: "1-4", word: "SUN", ch: "太陽" },
+        { id: "1-5", word: "RED", ch: "紅色" },
+        { id: "1-6", word: "BUS", ch: "公車" },
+        { id: "1-7", word: "HAT", ch: "帽子" }
+      ]
+    },
+    {
+      id: 2,
+      name: "🌊 第二殿：珊瑚秘境",
+      diff: "4~5 字母",
+      boss: "🦑",
+      stages: [
+        { id: "2-1", word: "FISH", ch: "魚" },
+        { id: "2-2", word: "BLUE", ch: "藍色" },
+        { id: "2-3", word: "MILK", ch: "牛奶" },
+        { id: "2-4", word: "BIRD", ch: "鳥" },
+        { id: "2-5", word: "DUCK", ch: "鴨子" },
+        { id: "2-6", word: "BEAR", ch: "熊" }
+      ]
+    },
+    {
+      id: 3,
+      name: "🏫 第三殿：校園工坊",
+      diff: "5~6 字母",
+      boss: "🧙‍♂️",
+      stages: [
+        { id: "3-1", word: "APPLE", ch: "蘋果" },
+        { id: "3-2", word: "WATER", ch: "水" },
+        { id: "3-3", word: "CHAIR", ch: "椅子" },
+        { id: "3-4", word: "RULER", ch: "尺" },
+        { id: "3-5", word: "PENCIL", ch: "鉛筆" },
+        { id: "3-6", word: "BANANA", ch: "香蕉" }
+      ]
+    },
+    {
+      id: 4,
+      name: "🌋 第四殿：熾熱山脈",
+      diff: "6~7 字母",
+      boss: "🐲",
+      stages: [
+        { id: "4-1", word: "ORANGE", ch: "柳橙" },
+        { id: "4-2", word: "YELLOW", ch: "黃色" },
+        { id: "4-3", word: "MONKEY", ch: "猴子" },
+        { id: "4-4", word: "RABBIT", ch: "兔子" },
+        { id: "4-5", word: "SCHOOL", ch: "學校" }
+      ]
+    },
+    {
+      id: 5,
+      name: "🌌 第五殿：銀河神殿",
+      diff: "7~8 字母",
+      boss: "👾",
+      stages: [
+        { id: "5-1", word: "MORNING", ch: "早晨" },
+        { id: "5-2", word: "TEACHER", ch: "老師" },
+        { id: "5-3", word: "STUDENT", ch: "學生" },
+        { id: "5-4", word: "ELEPHANT", ch: "大象" }
+      ]
+    }
+  ];
+
+  /* ========================================================
+     2. 遊戲狀態與存檔
+     ======================================================== */
+  let currentPalaceIdx = 0;
+  let currentStageIdx = 0;
+  let curStage = null;
+  let inputLetters = [];
+  let enemyMaxHp = 100;
+  let enemyCurHp = 100;
+  let comboCount = 0;
+
+  // 核心：已攻克關卡 ID 集合 (用於消掉與防止二次領取)
+  let clearedStageKeys = new Set();
+
+  let playerWeapon = { name: "初心木劍", atk: 20, durability: Infinity };
+  let wordBag = [];
+  let forgeCandidateIdx = null;
+
+  function loadGameSave() {
+    try {
+      const pIdx = localStorage.getItem("word_hero_palace");
+      const cKeys = localStorage.getItem("word_hero_cleared_stages");
+      const bag = localStorage.getItem("word_hero_bag");
+      const weap = localStorage.getItem("word_hero_weap");
+
+      if (pIdx !== null) currentPalaceIdx = Math.min(parseInt(pIdx) || 0, PALACES.length - 1);
+      if (cKeys !== null) clearedStageKeys = new Set(JSON.parse(cKeys));
+      if (bag !== null) wordBag = JSON.parse(bag);
+      if (weap !== null) playerWeapon = JSON.parse(weap);
+      // JSON 存不了 Infinity（會變成 null），讀回來時還原成無限耐久
+      if (playerWeapon.durability == null) playerWeapon.durability = Infinity;
+    } catch(e) {}
+  }
+
+  function saveGameProgress() {
+    try {
+      localStorage.setItem("word_hero_palace", currentPalaceIdx);
+      localStorage.setItem("word_hero_cleared_stages", JSON.stringify([...clearedStageKeys]));
+      localStorage.setItem("word_hero_bag", JSON.stringify(wordBag));
+      localStorage.setItem("word_hero_weap", JSON.stringify(playerWeapon));
+    } catch(e) {}
+  }
+
+  /* ========================================================
+     3. 音效與語音
+     ======================================================== */
+  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  function playSynth(freq, wave, dur, gainVal = 0.1) {
+    if (audioContext.state === "suspended") audioContext.resume();
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    osc.type = wave;
+    osc.frequency.setValueAtTime(freq, audioContext.currentTime);
+    gain.gain.setValueAtTime(gainVal, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + dur);
+    osc.connect(gain);
+    gain.connect(audioContext.destination);
+    osc.start();
+    osc.stop(audioContext.currentTime + dur);
+  }
+
+  function speakWord(word) {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(word.toLowerCase());
+      u.lang = "en-US";
+      u.rate = 0.7;
+      window.speechSynthesis.speak(u);
+    }
+  }
+
+  /* ========================================================
+     4. 關卡切換、抽屜清單與選關
+     ======================================================== */
+  const chapterDropdown = document.getElementById("chapter-dropdown");
+  const stageDrawerEl = document.getElementById("stage-drawer");
+  const stageNodesContainer = document.getElementById("stage-nodes-container");
+  const drawerStatsEl = document.getElementById("drawer-stats");
+  const btnToggleDrawer = document.getElementById("btn-toggle-drawer");
+
+  function setupChapterDropdown() {
+    chapterDropdown.innerHTML = "";
+    PALACES.forEach((palace, idx) => {
+      const opt = document.createElement("option");
+      opt.value = idx;
+      opt.innerText = palace.name;
+      if (idx === currentPalaceIdx) opt.selected = true;
+      chapterDropdown.appendChild(opt);
+    });
+  }
+
+  function onChapterChange(idx) {
+    currentPalaceIdx = parseInt(idx);
+    findNextAvailableStageInPalace();
+    saveGameProgress();
+    renderStageDrawer();
+    loadStage(currentStageIdx);
+  }
+
+  btnToggleDrawer.onclick = () => {
+    const isShowing = stageDrawerEl.style.display === "flex";
+    stageDrawerEl.style.display = isShowing ? "none" : "flex";
+    if (!isShowing) renderStageDrawer();
+  };
+
+  // 繪製抽屜裡的關卡按鈕（攻克的會變暗消退，可點擊回顧重刷）
+  function renderStageDrawer() {
+    const palace = PALACES[currentPalaceIdx];
+    stageNodesContainer.innerHTML = "";
+    let clearedInThisPalace = 0;
+
+    palace.stages.forEach((st, idx) => {
+      const isCleared = clearedStageKeys.has(st.id);
+      if (isCleared) clearedInThisPalace++;
+
+      const btn = document.createElement("div");
+      btn.className = `stage-node-btn ${isCleared ? 'cleared' : ''} ${idx === currentStageIdx ? 'current' : ''}`;
+      btn.innerHTML = `
+        <span style="font-weight:bold;">${st.id}</span>
+        <span>${st.word}</span>
+        <span>${isCleared ? '✅ 攻克' : '⚔️ 挑戰'}</span>
+      `;
+      btn.onclick = () => {
+        currentStageIdx = idx;
+        stageDrawerEl.style.display = "none";
+        loadStage(idx);
+      };
+      stageNodesContainer.appendChild(btn);
+    });
+
+    drawerStatsEl.innerText = `${clearedInThisPalace} / ${palace.stages.length}`;
+    updatePalaceProgressBar();
+  }
+
+  function updatePalaceProgressBar() {
+    const palace = PALACES[currentPalaceIdx];
+    let clearedCount = palace.stages.filter(s => clearedStageKeys.has(s.id)).length;
+    const pct = Math.min(100, (clearedCount / palace.stages.length) * 100);
+    document.getElementById("palace-progress").style.width = pct + "%";
+  }
+
+  // 自動鎖定下一個未攻略的關卡
+  function findNextAvailableStageInPalace() {
+    const palace = PALACES[currentPalaceIdx];
+    const firstUnfinished = palace.stages.findIndex(s => !clearedStageKeys.has(s.id));
+    currentStageIdx = firstUnfinished !== -1 ? firstUnfinished : 0;
+  }
+
+  /* ========================================================
+     5. 戰鬥核心機制
+     ======================================================== */
+  const gameBox = document.getElementById("game-container");
+  const enemyAvatarEl = document.getElementById("enemy-avatar");
+  const enemyHpBarEl = document.getElementById("enemy-hp-bar");
+  const enemyHpTextEl = document.getElementById("enemy-hp-text");
+  const puzzleCnEl = document.getElementById("puzzle-cn");
+  const puzzleSlotsEl = document.getElementById("puzzle-slots");
+  const poolGridEl = document.getElementById("pool-grid");
+  const uiStageTagEl = document.getElementById("ui-stage-tag");
+
+  function loadStage(stageIdx) {
+    const palace = PALACES[currentPalaceIdx];
+    curStage = palace.stages[stageIdx];
+    currentStageIdx = stageIdx;
+
+    const isClearedAlready = clearedStageKeys.has(curStage.id);
+    uiStageTagEl.innerText = `關卡 ${curStage.id} ${isClearedAlready ? '(已通關・複習模式)' : ''}`;
+    uiStageTagEl.className = `stage-badge ${isClearedAlready ? 'repeat-tag' : ''}`;
+
+    enemyMaxHp = 70 + (currentPalaceIdx * 25);
+    enemyCurHp = enemyMaxHp;
+    updateEnemyHpUI();
+
+    enemyAvatarEl.innerText = palace.boss;
+    enemyAvatarEl.classList.remove("enemy-hit");
+    inputLetters = [];
+    buildPuzzle();
+    renderStageDrawer();
+  }
+
+  function updateEnemyHpUI() {
+    const pct = Math.max(0, (enemyCurHp / enemyMaxHp) * 100);
+    enemyHpBarEl.style.width = pct + "%";
+    enemyHpTextEl.innerText = `${enemyCurHp} / ${enemyMaxHp}`;
+  }
+
+  function buildPuzzle() {
+    puzzleCnEl.innerText = curStage.ch;
+    puzzleSlotsEl.innerHTML = "";
+    poolGridEl.innerHTML = "";
+
+    // 建立插槽
+    for (let i = 0; i < curStage.word.length; i++) {
+      const slot = document.createElement("div");
+      slot.className = "slot" + (i === 0 ? " active" : "");
+      slot.onclick = () => onSlotClick(i);
+      puzzleSlotsEl.appendChild(slot);
+    }
+
+    // 混淆字母
+    let letters = curStage.word.split("");
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    letters.push(alphabet[Math.floor(Math.random() * 26)]);
+    letters.push(alphabet[Math.floor(Math.random() * 26)]);
+    letters.sort(() => Math.random() - 0.5);
+
+    letters.forEach((char) => {
+      const btn = document.createElement("button");
+      btn.className = "letter-key";
+      btn.innerText = char;
+      btn.onclick = () => onLetterPressed(btn, char);
+      poolGridEl.appendChild(btn);
+    });
+  }
+
+  function onLetterPressed(btn, char) {
+    const targetChar = curStage.word[inputLetters.length];
+
+    if (char === targetChar) {
+      playSynth(420 + (inputLetters.length * 80), "sine", 0.08, 0.12);
+      btn.classList.add("used");
+
+      const targetSlot = puzzleSlotsEl.children[inputLetters.length];
+      targetSlot.innerText = char;
+      targetSlot.classList.add("filled");
+      targetSlot.classList.remove("active");
+
+      inputLetters.push({ char, btnRef: btn });
+
+      if (inputLetters.length < curStage.word.length) {
+        puzzleSlotsEl.children[inputLetters.length].classList.add("active");
+      } else {
+        setTimeout(executeAttack, 100);
+      }
+    } else {
+      playSynth(150, "sawtooth", 0.25, 0.2);
+      shakeScreen();
+      comboCount = 0;
+    }
+  }
+
+  function onSlotClick(index) {
+    if (index === inputLetters.length - 1 && inputLetters.length > 0) {
+      const popped = inputLetters.pop();
+      popped.btnRef.classList.remove("used");
+      const slot = puzzleSlotsEl.children[index];
+      slot.innerText = "";
+      slot.classList.remove("filled");
+      slot.classList.add("active");
+      if (puzzleSlotsEl.children[index + 1]) {
+        puzzleSlotsEl.children[index + 1].classList.remove("active");
+      }
+    }
+  }
+
+  function executeAttack() {
+    speakWord(curStage.word);
+    comboCount++;
+
+    let dmg = playerWeapon.atk + (comboCount * 6);
+    enemyCurHp = Math.max(0, enemyCurHp - dmg);
+
+    // 武器耐久扣除
+    if (playerWeapon.durability !== Infinity) {
+      playerWeapon.durability--;
+      if (playerWeapon.durability <= 0) {
+        playerWeapon = { name: "初心木劍", atk: 20, durability: Infinity };
+        alert("⚠️ 鍛造武器耐久耗盡！換回了初心木劍！");
+      }
+      updateWeaponDisplay();
+      saveGameProgress();
+    }
+
+    playSynth(600, "square", 0.15, 0.2);
+    enemyAvatarEl.classList.add("enemy-hit");
+    shakeScreen();
+    showDmgPopup(dmg);
+    updateEnemyHpUI();
+
+    setTimeout(() => {
+      enemyAvatarEl.classList.remove("enemy-hit");
+      if (enemyCurHp <= 0) {
+        handleVictoryOutcome();
+      } else {
+        // 未擊死則重置當前單字繼續拼打
+        inputLetters = [];
+        buildPuzzle();
+      }
+    }, 400);
+  }
+
+  function showDmgPopup(amount) {
+    const dmg = document.createElement("div");
+    dmg.className = "float-dmg";
+    dmg.innerText = `-${amount}` + (comboCount > 1 ? ` 🔥x${comboCount}` : "");
+    gameBox.appendChild(dmg);
+    setTimeout(() => dmg.remove(), 650);
+  }
+
+  function shakeScreen() {
+    gameBox.classList.remove("screen-shake");
+    void gameBox.offsetWidth;
+    gameBox.classList.add("screen-shake");
+  }
+
+  /* ========================================================
+     6. 結算：首通掉落 vs 複習重刷無掉落
+     ======================================================== */
+  const lootModalEl = document.getElementById("loot-modal");
+  const chestClickerEl = document.getElementById("chest-clicker");
+  const chestTipEl = document.getElementById("chest-tip");
+  const lootDetailsEl = document.getElementById("loot-details");
+  const repeatClearDetailsEl = document.getElementById("repeat-clear-details");
+  const lootWordTitleEl = document.getElementById("loot-word-title");
+  const lootWordCnEl = document.getElementById("loot-word-cn");
+  const repeatWordTitleEl = document.getElementById("repeat-word-title");
+  const btnNextRound = document.getElementById("btn-next-round");
+  const btnRepeatNext = document.getElementById("btn-repeat-next");
+
+  function handleVictoryOutcome() {
+    lootModalEl.style.display = "flex";
+    const isFirstTime = !clearedStageKeys.has(curStage.id);
+
+    if (isFirstTime) {
+      // 首通：顯示寶箱可開出新單字素材
+      chestClickerEl.style.display = "block";
+      chestTipEl.style.display = "block";
+      lootDetailsEl.style.display = "none";
+      repeatClearDetailsEl.style.display = "none";
+    } else {
+      // 複習重刷：無寶箱，提示已獲取過獎勵
+      chestClickerEl.style.display = "none";
+      chestTipEl.style.display = "none";
+      lootDetailsEl.style.display = "none";
+      repeatClearDetailsEl.style.display = "block";
+      repeatWordTitleEl.innerText = `${curStage.word} (${curStage.ch})`;
+      playSynth(520, "triangle", 0.3, 0.2);
+    }
+  }
+
+  // 首通點擊開箱
+  chestClickerEl.onclick = () => {
+    playSynth(880, "triangle", 0.4, 0.25);
+    chestClickerEl.style.display = "none";
+    chestTipEl.style.display = "none";
+    lootDetailsEl.style.display = "block";
+
+    // 獲得單字素材卡
+    wordBag.push({ word: curStage.word, ch: curStage.ch });
+    clearedStageKeys.add(curStage.id);
+
+    lootWordTitleEl.innerText = curStage.word;
+    lootWordCnEl.innerText = curStage.ch;
+
+    saveGameProgress();
+    updateInventoryDisplay();
+    updatePalaceProgressBar();
+  };
+
+  btnNextRound.onclick = () => advanceToNextStage(true);
+  btnRepeatNext.onclick = () => advanceToNextStage(false);
+
+  function advanceToNextStage(wasFirstTime) {
+    lootModalEl.style.display = "none";
+    const palace = PALACES[currentPalaceIdx];
+
+    // 檢查本宮殿是否全部通關
+    const unfinishedIndex = palace.stages.findIndex(s => !clearedStageKeys.has(s.id));
+    if (unfinishedIndex === -1 && wasFirstTime) {
+      if (currentPalaceIdx < PALACES.length - 1) {
+        currentPalaceIdx++;
+        alert(`🏆 壯舉！你已徹底消滅【${palace.name}】的所有試煉！\n即刻啟程前往：${PALACES[currentPalaceIdx].name}`);
+        setupChapterDropdown();
+        saveGameProgress();
+        findNextAvailableStageInPalace();
+        loadStage(currentStageIdx);
+        return;
+      } else {
+        alert("👑 神蹟！你已經完全攻破所有的記憶宮殿殿堂！");
+      }
+    }
+
+    // 自動前往下一個關卡
+    if (currentStageIdx + 1 < palace.stages.length) {
+      currentStageIdx++;
+    } else {
+      findNextAvailableStageInPalace();
+    }
+    loadStage(currentStageIdx);
+  }
+
+  /* ========================================================
+     7. 鐵砧鍛造工坊
+     ======================================================== */
+  const inventoryCardsEl = document.getElementById("inventory-cards");
+  const uiBagCountEl = document.getElementById("ui-bag-count");
+  const forgePreviewBoxEl = document.getElementById("forge-preview-box");
+  const forgeExecBtn = document.getElementById("forge-exec-btn");
+
+  function updateInventoryDisplay() {
+    uiBagCountEl.innerText = wordBag.length;
+    inventoryCardsEl.innerHTML = "";
+
+    wordBag.forEach((item, index) => {
+      const card = document.createElement("div");
+      card.className = "word-card" + (forgeCandidateIdx === index ? " picked" : "");
+      card.innerHTML = `
+        <div class="card-w">${item.word}</div>
+        <div class="card-ch">${item.ch}</div>
+        <div style="font-size:0.75rem; color:var(--gold);">⚡ 傷害: +${item.word.length * 15}</div>
+      `;
+      card.onclick = () => pickWordForForge(index);
+      inventoryCardsEl.appendChild(card);
+    });
+  }
+
+  function pickWordForForge(index) {
+    forgeCandidateIdx = index;
+    const target = wordBag[index];
+    const power = target.word.length * 15;
+    forgePreviewBoxEl.innerHTML = `
+      <div style="color:var(--gold); font-size:1.1rem; font-weight:800;">${target.word} 聖劍</div>
+      <div style="font-size:0.8rem; color:#ccc;">基礎傷害: +${power} | 耐久: 5 次揮擊</div>
+    `;
+    forgeExecBtn.disabled = false;
+    updateInventoryDisplay();
+  }
+
+  forgeExecBtn.onclick = () => {
+    if (forgeCandidateIdx === null) return;
+    const usedWord = wordBag[forgeCandidateIdx];
+
+    playerWeapon = {
+      name: `${usedWord.word} 聖劍`,
+      atk: usedWord.word.length * 15,
+      durability: 5
+    };
+
+    playSynth(240, "sawtooth", 0.45, 0.3);
+    alert(`⚒️ 鍛造成功！打造出【${playerWeapon.name}】！\n💥 攻擊力: ${playerWeapon.atk}\n⏳ 可揮擊: 5 次（用完將回歸木劍）`);
+
+    // 鍛造後單字永久消耗消失
+    wordBag.splice(forgeCandidateIdx, 1);
+    forgeCandidateIdx = null;
+    forgePreviewBoxEl.innerHTML = `<span style="font-size:0.85rem; color:#888;">請在下方背包選擇單字素材</span>`;
+    forgeExecBtn.disabled = true;
+
+    saveGameProgress();
+    updateInventoryDisplay();
+    updateWeaponDisplay();
+  };
+
+  function updateWeaponDisplay() {
+    document.getElementById("ui-weap-name").innerText = playerWeapon.name;
+    document.getElementById("ui-weap-atk").innerText = playerWeapon.atk;
+    document.getElementById("ui-weap-dur").innerText =
+      playerWeapon.durability === Infinity ? "∞" : `${playerWeapon.durability}次`;
+  }
+
+  /* ========================================================
+     8. 底部場景導覽切換
+     ======================================================== */
+  const navBtnFight = document.getElementById("nav-btn-fight");
+  const navBtnForge = document.getElementById("nav-btn-forge");
+  const battleSceneEl = document.getElementById("battle-scene");
+  const forgeSceneEl = document.getElementById("forge-scene");
+
+  navBtnFight.onclick = () => {
+    navBtnFight.classList.add("active");
+    navBtnForge.classList.remove("active");
+    battleSceneEl.style.display = "flex";
+    forgeSceneEl.style.display = "none";
+  };
+
+  navBtnForge.onclick = () => {
+    navBtnForge.classList.add("active");
+    navBtnFight.classList.remove("active");
+    battleSceneEl.style.display = "none";
+    forgeSceneEl.style.display = "flex";
+  };
+
+  // 實體鍵盤快速輸入與刪除
+  window.addEventListener("keydown", (e) => {
+    if (battleSceneEl.style.display === "none") return;
+    if (lootModalEl.style.display === "flex") return;
+    const key = e.key.toUpperCase();
+    if (key.length === 1 && key >= "A" && key <= "Z") {
+      const free = Array.from(poolGridEl.children).filter(b => !b.classList.contains("used"));
+      // 同一個字母有好幾顆時，優先按「現在要的那一顆」
+      const matchBtn = free.find(b => b.innerText === key && key === curStage.word[inputLetters.length])
+        || free.find(b => b.innerText === key);
+      if (matchBtn) matchBtn.click();
+    } else if (e.key === "Backspace") {
+      e.preventDefault();
+      if (inputLetters.length > 0) onSlotClick(inputLetters.length - 1);
+    }
+  });
+
+  /* ========================================================
+     9. 啟動
+     ======================================================== */
+  loadGameSave();
+  setupChapterDropdown();
+  findNextAvailableStageInPalace();
+  loadStage(currentStageIdx);
+  updateInventoryDisplay();
+  updateWeaponDisplay();
+</script>
 </body>
 </html>
