@@ -35,8 +35,9 @@
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'en-US'; u.rate = 0.7;
-    // 念英文時把背景音樂再壓小，念完再恢復
-    u.onstart = () => Music.duck(true);
+    // 念英文時把背景音樂壓小，念完再恢復；有些瀏覽器打斷朗讀時不會通知「念完了」，
+    // 所以另外估算朗讀時間，時間到也一定恢復音量
+    Music.duck(true, Math.max(1500, text.length * 120 + 600));
     u.onend = u.onerror = () => Music.duck(false);
     speechSynthesis.speak(u);
   }
@@ -55,22 +56,33 @@
 
   /* ---------- 背景音樂：一般關 bgm、魔王關 boss（音量小，避免蓋過發音） ---------- */
   const Music = (function () {
-    const VOL = 0.12, DUCK = 0.035;
+    const VOL = 0.32, DUCK = 0.14;   // 平常音量／念英文時的音量（壓低但聽得到）
     const tracks = { bgm: new Audio('assets/audio/bgm.mp3'), boss: new Audio('assets/audio/boss.mp3') };
-    Object.values(tracks).forEach((a) => { a.loop = true; a.preload = 'none'; a.volume = VOL; });
-    let cur = 'bgm', ducked = false, unlocked = false;
+    Object.values(tracks).forEach((a) => { a.loop = true; a.preload = 'auto'; a.volume = VOL; });
+    let cur = 'bgm', ducked = false, unlocked = false, duckTimer = 0;
     let on = true;
     try { on = localStorage.getItem('word_hero_music') !== 'off' && localStorage.getItem('kg-bgm-on') !== '0'; } catch (e) {}
     function apply() {
       Object.entries(tracks).forEach(([k, a]) => {
-        if (k === cur && on && unlocked) { a.volume = ducked ? DUCK : VOL; a.play().catch(() => {}); } else a.pause();
+        if (k === cur && on && unlocked) { a.volume = ducked ? DUCK : VOL; if (a.paused) a.play().catch(() => {}); } else a.pause();
       });
     }
-    // 瀏覽器要等使用者點過畫面才能放音樂
-    document.addEventListener('pointerdown', () => { if (!unlocked) { unlocked = true; apply(); } }, true);
+    // 瀏覽器要等使用者點過畫面才能放音樂；第一次點的時候兩首都先「解鎖」，之後魔王關才能切換（手機也適用）
+    document.addEventListener('pointerdown', () => {
+      if (unlocked) return;
+      unlocked = true;
+      Object.entries(tracks).forEach(([k, a]) => { if (k !== cur) a.play().then(() => a.pause()).catch(() => {}); });
+      apply();
+    }, true);
     return {
       play(kind) { if (cur !== kind) { tracks[cur].pause(); cur = kind; } apply(); },
-      duck(d) { ducked = d; if (on && unlocked) tracks[cur].volume = d ? DUCK : VOL; },
+      duck(d, ms) {
+        ducked = d;
+        clearTimeout(duckTimer);
+        if (d && ms) duckTimer = setTimeout(() => { ducked = false; if (on && unlocked) tracks[cur].volume = VOL; }, ms);
+        if (on && unlocked) tracks[cur].volume = d ? DUCK : VOL;
+      },
+      get state() { const a = tracks[cur]; return { cur, on, unlocked, paused: a.paused, volume: a.volume }; },
       toggle() { on = !on; try { localStorage.setItem('word_hero_music', on ? 'on' : 'off'); } catch (e) {} apply(); return on; },
       get on() { return on; },
     };
@@ -824,5 +836,5 @@
   persist();
   startStage(nextStageIdx());
 
-  window.__hero = { get S() { return S; }, get B() { return B; }, addPoint, startStage, show }; // 測試用
+  window.__hero = { get S() { return S; }, get B() { return B; }, addPoint, startStage, show, Music, speak }; // 測試用
 })();
