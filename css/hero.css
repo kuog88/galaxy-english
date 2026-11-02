@@ -92,6 +92,17 @@ select.grade {
 .cutin img { width: 70%; max-width: 360px; filter: drop-shadow(0 0 24px var(--c, #fff)) drop-shadow(0 0 8px #fff); }
 .cutin b { position: absolute; bottom: 22%; font-size: 1.5rem; color: var(--gold); text-shadow: 0 0 10px #000, 0 0 4px var(--c, #fff); letter-spacing: 2px; }
 
+/* 作答時戰場縮小，讓三個選項完整顯示 */
+.field { transition: height .25s ease; }
+#game.asking .field { height: clamp(190px, 33vh, 330px); }
+#game.asking .console { gap: 5px; padding-top: 6px; }
+.opt.reveal { border-color: var(--gold); box-shadow: 0 0 12px rgba(255,207,74,.6); }
+/* 走路過場 */
+.pm.walking .sprite img.body { animation: walk .25s infinite alternate ease-in-out; }
+.pm.hero-src.walking .sprite img.body { animation-name: walkHero; }
+@keyframes walk { from { transform: scaleX(-1) translateY(0) rotate(-4deg); } to { transform: scaleX(-1) translateY(-8%) rotate(4deg); } }
+@keyframes walkHero { from { transform: translateY(0) rotate(-4deg); } to { transform: translateY(-8%) rotate(4deg); } }
+
 /* 指令／訊息視窗 */
 .console { flex: 1; min-height: 0; margin: 6px 8px 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 7px; overflow-y: auto; }
 .msg { font-size: .98rem; line-height: 1.5; min-height: 1.5em; }

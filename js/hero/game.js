@@ -35,8 +35,46 @@
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'en-US'; u.rate = 0.7;
+    // 念英文時把背景音樂再壓小，念完再恢復
+    u.onstart = () => Music.duck(true);
+    u.onend = u.onerror = () => Music.duck(false);
     speechSynthesis.speak(u);
   }
+  // 腳步聲（走路過場用）
+  function step() {
+    if (!soundOn) return;
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(55, t + 0.08);
+      g.gain.setValueAtTime(0.22, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+      o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.1);
+    } catch (e) {}
+  }
+
+  /* ---------- 背景音樂：一般關 bgm、魔王關 boss（音量小，避免蓋過發音） ---------- */
+  const Music = (function () {
+    const VOL = 0.12, DUCK = 0.035;
+    const tracks = { bgm: new Audio('assets/audio/bgm.mp3'), boss: new Audio('assets/audio/boss.mp3') };
+    Object.values(tracks).forEach((a) => { a.loop = true; a.preload = 'none'; a.volume = VOL; });
+    let cur = 'bgm', ducked = false, unlocked = false;
+    let on = true;
+    try { on = localStorage.getItem('word_hero_music') !== 'off' && localStorage.getItem('kg-bgm-on') !== '0'; } catch (e) {}
+    function apply() {
+      Object.entries(tracks).forEach(([k, a]) => {
+        if (k === cur && on && unlocked) { a.volume = ducked ? DUCK : VOL; a.play().catch(() => {}); } else a.pause();
+      });
+    }
+    // 瀏覽器要等使用者點過畫面才能放音樂
+    document.addEventListener('pointerdown', () => { if (!unlocked) { unlocked = true; apply(); } }, true);
+    return {
+      play(kind) { if (cur !== kind) { tracks[cur].pause(); cur = kind; } apply(); },
+      duck(d) { ducked = d; if (on && unlocked) tracks[cur].volume = d ? DUCK : VOL; },
+      toggle() { on = !on; try { localStorage.setItem('word_hero_music', on ? 'on' : 'off'); } catch (e) {} apply(); return on; },
+      get on() { return on; },
+    };
+  })();
 
   /* ---------- 存檔 ---------- */
   const SAVE = 'word_hero_v3';
@@ -120,7 +158,7 @@
       mons.push({
         word: w[0], ch: w[1], hp: max, max, boss: isBoss,
         atk: Math.round(MON_ATK[gi] * (isBoss ? 1.6 : 1)),
-        img: isBoss ? `assets/hero/m-boss-${g.boss}.webp` : `assets/hero/m-${g.sheet}-${1 + Math.floor(Math.random() * 8)}.webp`,
+        img: isBoss ? `assets/hero/m-boss-${g.boss}.webp` : `assets/hero/m-${pick(g.sheet)}-${1 + Math.floor(Math.random() * 8)}.webp`,
       });
     }
     if (boss && mons.length > 1) mons.splice(1, 0, mons.shift()); // 魔王站中間
@@ -130,6 +168,8 @@
       turn: 0, target: 0, busy: true, over: false, mode: null, unlocks: [],
     };
     $('#field-bg').style.backgroundImage = `url("${g.bg}")`;
+    $('#game').classList.remove('asking');
+    Music.play(boss ? 'boss' : 'bgm');
     $('#stage-tag').innerText = `${boss ? '👑 魔王 ' : ''}小${'一二三四五六'[gi]} 第 ${si + 1} 關・${stage.name}${B.first ? '' : '（複習）'}`;
     $('#stage-tag').classList.toggle('boss', boss);
     $('#stage-num').innerText = `${S.grade}-${si + 1}`;
@@ -138,6 +178,20 @@
     say(msg || `${boss ? '👑 ' : ''}<b>${esc(mons.map((m) => m.ch + '怪').join('、'))}</b> 出現了！`);
     const b = B;
     setTimeout(() => { if (B === b) { b.busy = false; beginTurn(); } }, 900);
+  }
+
+  // 前往下一關：隊伍走路 0.5 秒（背景往後退、腳步聲），再進下一關
+  async function walkTo(si, msg) {
+    if (B && B.party) {
+      const bg = $('#field-bg');
+      $('#monsters').animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' });
+      document.querySelectorAll('.pm').forEach((el) => { el.classList.remove('active'); el.classList.add('walking'); });
+      bg.animate([{ transform: 'scale(1.08) translateX(0)' }, { transform: 'scale(1.08) translateX(-7%)' }], { duration: 500, easing: 'linear' });
+      for (let i = 0; i < 4; i++) setTimeout(step, i * 125);
+      await sleep(520);
+      $('#monsters').getAnimations().forEach((a) => a.cancel());
+    }
+    startStage(si, msg);
   }
 
   /* ---------- 畫面 ---------- */
@@ -149,7 +203,9 @@
       el.className = 'mon' + (m.boss ? ' boss' : '') + (m.chest ? ' chest' : '') + (m.opened ? ' opened' : '')
         + (!m.chest && i === B.target && !B.over ? ' target' : '');
       const src = m.chest ? `assets/hero/p-chest-${m.boss ? 'gold' : 'wood'}${m.opened ? '-open' : ''}.webp` : m.img;
-      el.innerHTML = `<img src="${src}" alt=""><span class="tag">${m.chest ? (m.opened ? '已打開' : (m.boss ? '✨ 金寶箱' : '寶箱')) : esc(m.ch) + '怪'}</span>`
+      // 名牌只放簡短中文（括號說明、分號後的第二個意思省略）
+      const short = m.ch.replace(/（.*?）/g, '').split('；')[0];
+      el.innerHTML = `<img src="${src}" alt=""><span class="tag">${m.chest ? (m.opened ? '已打開' : (m.boss ? '✨ 金寶箱' : '寶箱')) : esc(short) + '怪'}</span>`
         + (m.chest ? '' : `<span class="bar"><i style="width:${(m.hp / m.max) * 100}%"></i></span>`);
       el.onclick = () => (m.chest ? openChest(m) : chooseTarget(i));
       box.appendChild(el);
@@ -189,10 +245,11 @@
   function showCommands() {
     const p = B.party[B.turn], c = CH[p.id];
     const atk = { spell: '⚔️ 攻擊<small>拼出怪物的單字</small>', talk: '✨ 咒文<small>答對文法對話</small>', cloze: '📜 填空<small>答對句型填空</small>' }[c.type];
+    $('#game').classList.remove('asking');
     con.innerHTML = `<div class="msg"><b>${c.name}</b> 要怎麼做？</div>
       <div class="cmds">
         <button class="cmd" data-cmd="attack">${atk}</button>
-        <button class="cmd" data-cmd="defend">🛡️ 防禦<small>傷害減半</small></button>
+        <button class="cmd" data-cmd="defend">🛡️ 防禦<small>會給拼音提示</small></button>
         <button class="cmd" data-cmd="run">🏃 逃跑<small>重新遇敵</small></button>
       </div>`;
     con.querySelectorAll('[data-cmd]').forEach((b) => b.onclick = () => onCommand(b.dataset.cmd));
@@ -203,40 +260,55 @@
     beep(660, 'triangle', 0.05, 0.08);
     const p = B.party[B.turn], c = CH[p.id];
     if (cmd === 'attack') ({ spell: askSpell, talk: askTalk, cloze: askCloze })[c.type]();
-    else if (cmd === 'defend') {
-      p.def = true;
-      say(`<b>${c.name}</b> 擺出防禦的姿勢！`);
-      renderParty();
-      B.busy = true; const b = B;
-      setTimeout(() => { if (B === b) { b.busy = false; nextTurn(); } }, 700);
-    } else if (cmd === 'run') {
+    else if (cmd === 'defend') defend(p, c);
+    else if (cmd === 'run') {
       B.busy = true; const b = B;
       if (Math.random() < 0.6) { say('成功逃走了！又遇到新的怪物…'); setTimeout(() => { if (B === b) startStage(b.si); }, 900); }
       else { say('沒能逃掉！'); setTimeout(async () => { if (B !== b) return; await monsterAttack(); if (B === b && !b.over) { b.busy = false; nextTurn(); } }, 600); }
     }
   }
+  // 防禦：所有怪物各打一次（傷害 50%），之後出題並直接告訴你正確答案
+  async function defend(p, c) {
+    const b = B;
+    b.busy = true;
+    say(`<b>${c.name}</b> 舉起防禦！怪物們一起攻擊過來…`);
+    for (const m of alive()) {
+      await monsterAttack(m, 0.5, true);
+      if (B !== b || b.over || p.hp <= 0) break;
+    }
+    if (B !== b || b.over) return;
+    if (p.hp <= 0) { await sleep(500); b.busy = false; return nextTurn(); }
+    b.busy = false;
+    ({ spell: askSpell, talk: askTalk, cloze: askCloze })[c.type](true);
+  }
+
   function chooseTarget(i) {
     if (!B || B.over || B.busy || B.mons[i].hp <= 0) return;
     B.target = i;
     renderMonsters(false);
-    if (B.mode === 'spell') askSpell();
+    if (B.mode === 'spell') askSpell(B.q && B.q.revealed);
   }
-  const backRow = '<div class="row"><button class="small-btn" id="back">↩️ 回到指令</button><span></span></div>';
+  // 「回到指令」放在題目那一行，省下空間給選項
+  const backBtn = '<button class="small-btn" id="back">↩️ 指令</button>';
   function bindBack() { $('#back').onclick = () => { if (!B.busy) { B.mode = null; showCommands(); } }; }
 
-  /* ---------- 題目 1：拼單字 ---------- */
-  function askSpell() {
+  /* ---------- 題目 1：拼單字（字母保留原本的大小寫，例如 Monday） ---------- */
+  function askSpell(reveal) {
     const p = B.party[B.turn], mon = B.mons[B.target];
     B.mode = 'spell';
-    B.q = { word: mon.word, pos: 0, wrong: 0, tries: 0 };
+    $('#game').classList.add('asking');
+    B.q = { word: mon.word, pos: 0, wrong: 0, tries: reveal ? 1 : 0, revealed: !!reveal };
     const tiles = shuffle(mon.word.split('').concat([pick('bcdfghklmnprstw'), pick('aeiou')]));
-    con.innerHTML = `<div class="row"><div class="msg"><b>${CH[p.id].name}</b>：拼出「<b>${esc(mon.ch)}</b>」攻擊！</div><button class="small-btn" id="say">🔊</button></div>
+    const hint = reveal ? `🛡️ 正確拼法：<b style="font-size:1.2rem;letter-spacing:3px">${esc(mon.word)}</b>`
+      : (alive().length > 1 ? '點上面的怪物可以換攻擊目標' : '');
+    con.innerHTML = `<div class="row"><div class="msg"><b>${CH[p.id].name}</b>：拼出「<b>${esc(mon.ch)}</b>」攻擊！</div><span><button class="small-btn" id="say">🔊</button> ${backBtn}</span></div>
       <div class="slots">${mon.word.split('').map((_, i) => `<span class="slot${i ? '' : ' active'}"></span>`).join('')}</div>
-      <div class="hint" id="hint">${alive().length > 1 ? '點上面的怪物可以換攻擊目標' : ''}</div>
-      <div class="keys">${tiles.map((ch) => `<button class="key">${ch}</button>`).join('')}</div>${backRow}`;
+      <div class="hint" id="hint">${hint}</div>
+      <div class="keys">${tiles.map((ch) => `<button class="key">${ch}</button>`).join('')}</div>`;
     $('#say').onclick = () => speak(mon.word);
     bindBack();
     con.querySelectorAll('.key').forEach((k) => k.onclick = () => pressKey(k));
+    if (reveal) speak(mon.word);
   }
   async function pressKey(k) {
     if (B.busy || B.over || B.mode !== 'spell') return;
@@ -265,25 +337,28 @@
     const cur = G()[kind], all = GR.slice(0, S.grade).flatMap((g) => g[kind]);
     return Math.random() < 0.7 && cur.length ? cur : all;
   }
-  function askTalk() {
+  function askTalk(reveal) {
     const [q, qzh, a, azh, wrongs] = pick(poolOf('talk'));
     const opts = shuffle([{ en: a, zh: azh, ok: true }].concat(shuffle(wrongs).slice(0, 2).map(([en, zh]) => ({ en, zh, ok: false }))));
-    askChoice('talk', `<div class="q">${esc(q)}</div>`, opts, q, `題目的意思是「${qzh}」`, a);
+    askChoice('talk', `<div class="q">${esc(q)}</div>`, opts, q, `題目的意思是「${qzh}」`, a, reveal);
   }
-  function askCloze() {
+  function askCloze(reveal) {
     const [s, zh, a, wrongs] = pick(poolOf('cloze'));
     const opts = shuffle([{ en: a, ok: true }].concat(wrongs.slice(0, 2).map((w) => ({ en: w, ok: false }))));
     const html = `<div class="q">${esc(s).replace('___', '<span class="blank"></span>')}</div>`;
-    askChoice('cloze', html, opts, null, `這句的意思是「${zh}」`, s.replace('___', a));
+    askChoice('cloze', html, opts, s.replace('___', a), `這句的意思是「${zh}」`, s.replace('___', a), reveal, zh);
   }
-  function askChoice(mode, qHtml, opts, readQ, hint, readAfter) {
+  function askChoice(mode, qHtml, opts, readQ, hint, readAfter, reveal, zh) {
     const p = B.party[B.turn];
     B.mode = mode;
-    B.q = { opts, tries: 0, readAfter };
-    con.innerHTML = `<div class="row"><div class="msg"><b>${CH[p.id].name}</b>：${mode === 'talk' ? '選出正確的回答' : '選出空格裡的字'}！</div>${readQ ? '<button class="small-btn" id="say">🔊</button>' : ''}</div>
-      ${qHtml}<div class="hint" id="hint"></div>
-      <div class="opts">${opts.map((o, i) => `<button class="opt" data-i="${i}"><span class="l">${'ABC'[i]}</span><span><span class="en">${esc(o.en)}</span>${o.zh ? `<span class="zh" hidden>${esc(o.zh)}</span>` : ''}</span></button>`).join('')}</div>${backRow}`;
-    if (readQ) { $('#say').onclick = () => speak(readQ); speak(readQ); }
+    $('#game').classList.add('asking');
+    B.q = { opts, tries: reveal ? 1 : 0, readAfter };
+    const okIdx = opts.findIndex((o) => o.ok);
+    con.innerHTML = `<div class="row"><div class="msg"><b>${CH[p.id].name}</b>：${mode === 'talk' ? '選出正確的回答' : '選出空格裡的字'}！</div><span>${mode === 'talk' ? '<button class="small-btn" id="say">🔊</button> ' : ''}${backBtn}</span></div>
+      ${qHtml}<div class="hint" id="hint">${reveal ? `🛡️ 正確答案是 <b>${'ABC'[okIdx]}. ${esc(opts[okIdx].en)}</b>${zh ? `（${esc(zh)}）` : ''}` : ''}</div>
+      <div class="opts">${opts.map((o, i) => `<button class="opt${reveal && o.ok ? ' reveal' : ''}" data-i="${i}"><span class="l">${'ABC'[i]}</span><span><span class="en">${esc(o.en)}</span>${o.zh ? `<span class="zh" ${reveal ? '' : 'hidden'}>${esc(o.zh)}</span>` : ''}</span></button>`).join('')}</div>`;
+    if (mode === 'talk') { $('#say').onclick = () => speak(readQ); speak(readQ); }
+    else if (reveal) speak(readQ);
     bindBack();
     con.querySelectorAll('.opt').forEach((b) => b.onclick = async () => {
       if (B.busy || B.over || b.disabled) return;
@@ -403,20 +478,21 @@
     await sleep(300);
   }
 
-  async function monsterAttack(prefer) {
+  // mult：傷害倍率（防禦時 0.5）；noGuard：防禦時由自己承受，盾戰士不代擋
+  async function monsterAttack(prefer, mult = 1, noGuard = false) {
     const list = alive();
     if (!list.length) return;
     const mon = prefer && prefer.hp > 0 ? prefer : pick(list);
     let victim = B.party[B.turn];
     const shield = B.party.find((x) => CH[x.id].guard && x.hp > 0);
     let guarded = false;
-    if (shield && victim !== shield && Math.random() < 0.5) { victim = shield; guarded = true; }
-    const dmg = Math.max(1, Math.round((mon.atk + Math.floor(Math.random() * 4)) * (victim.def ? 0.5 : 1) * (1 - defPct(victim.id) / 100)));
+    if (!noGuard && shield && victim !== shield && Math.random() < 0.5) { victim = shield; guarded = true; }
+    const dmg = Math.max(1, Math.round((mon.atk + Math.floor(Math.random() * 4)) * mult * (1 - defPct(victim.id) / 100)));
     mon.el.animate([{ transform: 'translateY(0) scale(1)' }, { transform: 'translateY(30px) scale(1.18)' }, { transform: 'translateY(0) scale(1)' }], { duration: 320, easing: 'ease-in-out' });
     await sleep(180);
     victim.hp = Math.max(0, victim.hp - dmg);
     beep(200, 'sawtooth', 0.2, 0.2);
-    note(`<b>${esc(mon.ch)}怪</b> 的攻擊！${guarded ? '<b>盾戰士</b> 挺身擋下！' : ''}<b>${CH[victim.id].name}</b> 受到 ${dmg} 點傷害${victim.hp <= 0 ? '，倒下了…' : '。再試一次！'}`);
+    note(`<b>${esc(mon.ch)}怪</b> 的攻擊！${guarded ? '<b>盾戰士</b> 挺身擋下！' : ''}<b>${CH[victim.id].name}</b> 受到 ${dmg} 點傷害${victim.hp <= 0 ? '，倒下了…' : (mult < 1 ? '（防禦中，傷害減半）' : '。再試一次！')}`);
     renderParty();
     const pt = point(victim.el);
     J.floatText(fx, pt.x, pt.y - 30, '-' + dmg, 'ouch');
@@ -429,6 +505,7 @@
   /* ---------- 勝利：開寶箱 → 經驗、升級 ---------- */
   function victory() {
     B.over = true; B.mode = 'loot'; B.busy = false;
+    $('#game').classList.remove('asking');
     beep(523, 'triangle', 0.15, 0.2); setTimeout(() => beep(659, 'triangle', 0.15, 0.2), 150); setTimeout(() => beep(784, 'triangle', 0.3, 0.2), 300);
     renderParty();
     con.innerHTML = `<div class="msg">🎉 怪物全滅，都變成<b>寶箱</b>了！點上面的寶箱打開，收集英文字母。</div>
@@ -441,7 +518,7 @@
     m.el.classList.add('opened');
     m.el.querySelector('img').src = `assets/hero/p-chest-${m.boss ? 'gold' : 'wood'}-open.webp`;
     m.el.querySelector('.tag').innerText = '已打開';
-    const got = m.word.split('');
+    const got = m.word.toLowerCase().split('');            // 背包裡的字母一律存小寫
     if (m.boss) for (let i = 0; i < 3; i++) got.push(pick('abcdefghiklmnoprstuwy'));
     got.forEach((c) => { S.letters[c] = (S.letters[c] || 0) + 1; });
     if (m.boss) S.gold++;
@@ -486,7 +563,7 @@
     $('#go-next').onclick = () => {
       closeModal();
       if (last && b.first && S.grade < GR.length && GR[S.grade].stages.length) { S.grade++; persist(); setupGrades(); next = 0; }
-      startStage(next);
+      walkTo(next);
     };
   }
 
@@ -582,6 +659,7 @@
       ${done ? `<p>全部拼對了！把字母丟進鐵爐吧！</p><button class="btn fire" id="f-throw">🔥 丟進鐵爐</button>`
         : `<div class="msg">拼出「<b>${esc(wordCh(word))}</b>」（${word.length} 個字母）</div>
         <div class="slots" id="f-slots">${word.split('').map((_, i) => `<span class="slot ${i < forging.typed.length ? 'filled' : ''} ${i === forging.typed.length ? 'active' : ''}">${forging.typed[i] || ''}</span>`).join('')}</div>
+        ${forging.answer ? `<div class="hint" style="font-size:1rem">❌ 拼錯了！這個字的拼法是：<b style="font-size:1.25rem;letter-spacing:3px;color:#7fe3ff">${esc(forging.answer)}</b></div>` : ''}
         <div class="keys">${Object.keys(pool).filter((ch) => S.letters[ch] > 0).sort().map((ch) => `<button class="key" data-l="${ch}" ${pool[ch] > 0 ? '' : 'disabled'}>${ch}<small>${pool[ch]}</small></button>`).join('')}</div>
         <div class="row"><button class="small-btn" id="f-back">⌫ 退一格</button><button class="small-btn" id="f-say">🔊 聽發音</button></div>`}
     </div>`;
@@ -593,12 +671,13 @@
       forging.typed.push(k.dataset.l);
       beep(500, 'sine', 0.06);
       if (forging.typed.length < word.length) return renderForgePanel();
-      if (forging.typed.join('') === word) { forging.step++; forging.typed = []; speak(word); beep(784, 'triangle', 0.2); renderForgePanel(); }
+      if (forging.typed.join('') === word) { forging.step++; forging.typed = []; forging.answer = null; speak(word); beep(784, 'triangle', 0.2); renderForgePanel(); }
       else {
         renderForgePanel();
         const s = $('#f-slots'); s.classList.add('bad');
         beep(150, 'sawtooth', 0.2, 0.15);
-        setTimeout(() => { forging.typed = []; renderForgePanel(); }, 600);
+        // 拼錯：秀出正確拼法並念一次，字母不會扣
+        setTimeout(() => { forging.typed = []; forging.answer = word; renderForgePanel(); speak(word); }, 600);
       }
     });
   }
@@ -688,6 +767,7 @@
   $('#nav-forge').onclick = () => show('forge');
   $('#nav-bar').onclick = () => show('bar');
   $('#chip-points').onclick = () => show('bar');
+  $('#chip-music').onclick = () => { $('#chip-music').style.opacity = Music.toggle() ? 1 : 0.4; };
   $('#chip-sound').onclick = () => {
     soundOn = !soundOn;
     try { localStorage.setItem('word_hero_sound', soundOn ? 'on' : 'off'); } catch (e) {}
@@ -720,8 +800,10 @@
     if (B.mode === 'spell') {
       const k = e.key.toLowerCase();
       if (k.length === 1 && k >= 'a' && k <= 'z') {
+        // 鍵盤不分大小寫，優先按到「現在需要的那一顆」（例如 Monday 的 M）
         const free = [...con.querySelectorAll('.key:not(.used)')];
-        const btn = free.find((x) => x.innerText === k && k === B.q.word[B.q.pos]) || free.find((x) => x.innerText === k);
+        const need = B.q.word[B.q.pos];
+        const btn = free.find((x) => x.innerText === need && need.toLowerCase() === k) || free.find((x) => x.innerText.toLowerCase() === k);
         if (btn) btn.click();
       }
     } else if (B.mode === 'talk' || B.mode === 'cloze') {
@@ -737,6 +819,7 @@
   S.unlocked.forEach((id) => { if (!S.chars[id]) S.chars[id] = { lv: 1, exp: 0 }; });
   $('#points').innerText = S.points;
   $('#chip-sound').innerText = soundOn ? '🔊' : '🔇';
+  $('#chip-music').style.opacity = Music.on ? 1 : 0.4;
   setupGrades();
   persist();
   startStage(nextStageIdx());
