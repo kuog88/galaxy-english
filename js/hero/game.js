@@ -41,6 +41,66 @@
     u.onend = u.onerror = () => Music.duck(false);
     speechSynthesis.speak(u);
   }
+  /* ---------- 合成音效：打擊、敲鐵、金幣 ---------- */
+  function ctx() { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); return actx; }
+  let noiseBuf = null;
+  function noise(a) {
+    if (!noiseBuf) {
+      noiseBuf = a.createBuffer(1, a.sampleRate * 0.5, a.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const s = a.createBufferSource(); s.buffer = noiseBuf; return s;
+  }
+  // 打擊聲：低音「碰」＋短促的雜訊，武器越強越重
+  function hitSfx(power = 1) {
+    if (!soundOn) return;
+    try {
+      const a = ctx(), t = a.currentTime;
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(180 + power * 20, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.18);
+      g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.25);
+      const n = noise(a), f = a.createBiquadFilter(), ng = a.createGain();
+      f.type = 'lowpass'; f.frequency.value = 1800 + power * 500;
+      ng.gain.setValueAtTime(0.35 + power * 0.06, t); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.12 + power * 0.03);
+      n.connect(f).connect(ng).connect(a.destination); n.start(t); n.stop(t + 0.3);
+    } catch (e) {}
+  }
+  // 敲鐵聲：幾個不和諧的高音同時響，很快衰減，像鐵鎚敲在鐵砧上
+  function anvilSfx(delay = 0) {
+    if (!soundOn) return;
+    try {
+      const a = ctx(), t = a.currentTime + delay;
+      [523, 1397, 2273, 3156].forEach((fq, i) => {
+        const o = a.createOscillator(), g = a.createGain();
+        o.type = i ? 'sine' : 'triangle'; o.frequency.value = fq;
+        g.gain.setValueAtTime(0.18 / (i + 1), t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.6 - i * 0.1);
+        o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.65);
+      });
+      const n = noise(a), f = a.createBiquadFilter(), ng = a.createGain();
+      f.type = 'highpass'; f.frequency.value = 3000;
+      ng.gain.setValueAtTime(0.25, t); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+      n.connect(f).connect(ng).connect(a.destination); n.start(t); n.stop(t + 0.06);
+    } catch (e) {}
+  }
+  // 金幣聲：一串清脆的高音「叮叮噹噹」，金寶箱更多更響
+  function coinSfx(rich) {
+    if (!soundOn) return;
+    try {
+      const a = ctx(), base = a.currentTime;
+      const notes = rich ? [1568, 2093, 2637, 2349, 3136, 2637, 3520, 4186] : [1568, 2093, 2637, 3136];
+      notes.forEach((fq, i) => {
+        const t = base + i * 0.07 + Math.random() * 0.02;
+        const o = a.createOscillator(), g = a.createGain();
+        o.type = 'square'; o.frequency.value = fq;
+        g.gain.setValueAtTime(0.06, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+        o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.2);
+      });
+    } catch (e) {}
+  }
+
   // 腳步聲（走路過場用）
   function step() {
     if (!soundOn) return;
@@ -439,7 +499,7 @@
   async function hitMon(m, dmg, lvl, color) {
     if (!m || m.hp <= 0) return;
     const pt = point(m.el), img = m.el.querySelector('img');
-    beep(lvl >= 4 ? 900 : 600, 'square', 0.12, 0.16);
+    hitSfx(1 + lvl);
     J.sparks(fx, pt.x, pt.y, lvl >= 1 ? 'assets/hero/p-sparkle.webp' : 'assets/rpg/ui-hit.webp');
     if (lvl >= 2) slash(pt, color);
     if (lvl >= 4) ring(pt, color);
@@ -535,7 +595,7 @@
     got.forEach((c) => { S.letters[c] = (S.letters[c] || 0) + 1; });
     if (m.boss) S.gold++;
     persist();
-    beep(880, 'triangle', 0.3, 0.18);
+    coinSfx(m.boss);
     const pt = point(m.el);
     J.floatText(fx, pt.x, pt.y - 20, '+ ' + got.join(' ') + (m.boss ? '  ★1' : ''), 'loot');
     if (B.mons.every((x) => x.opened)) setTimeout(finishBattle, 900);
@@ -717,6 +777,8 @@
     furnace.src = 'assets/hero/p-furnace-fire.webp';
     furnace.classList.add('hot');
     beep(120, 'sawtooth', 0.6, 0.2);
+    // 爐火燒起來後「鏘、鏘、鏘」敲三下鐵
+    anvilSfx(0.25); anvilSfx(0.6); anvilSfx(0.95);
     await sleep(1300);
     if (!S.owned[c.weapon].includes(idx)) S.owned[c.weapon].push(idx);
     const cur = weaponOf(forgeChar);
@@ -836,5 +898,5 @@
   persist();
   startStage(nextStageIdx());
 
-  window.__hero = { get S() { return S; }, get B() { return B; }, addPoint, startStage, show, Music, speak }; // 測試用
+  window.__hero = { get S() { return S; }, get B() { return B; }, addPoint, startStage, show, Music, speak, hitSfx, anvilSfx, coinSfx }; // 測試用
 })();
