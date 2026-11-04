@@ -82,7 +82,7 @@ window.HERO_DATA = (function () {
       ],
     },
     {
-      grade: 3, name: '🏫 小三・校園工坊', sheet: ['school', 'forest'], bg: 'assets/hero/bg-school.webp', boss: 3,
+      grade: 3, name: '🏫 小三・校園工坊', sheet: ['school', 'forest', 'abyss', 'demon'], bg: 'assets/hero/bg-school.webp', boss: 3,
       stages: [
         { name: '數字 11～20', words: [['eleven', '十一'], ['twelve', '十二'], ['thirteen', '十三'], ['fourteen', '十四'], ['fifteen', '十五'], ['sixteen', '十六'], ['seventeen', '十七'], ['eighteen', '十八'], ['nineteen', '十九'], ['twenty', '二十']] },
         { name: '動物園', words: [['lion', '獅子'], ['tiger', '老虎'], ['monkey', '猴子'], ['rabbit', '兔子'], ['elephant', '大象'], ['zebra', '斑馬'], ['horse', '馬'], ['cow', '乳牛']] },
@@ -133,7 +133,7 @@ window.HERO_DATA = (function () {
       ],
     },
     {
-      grade: 4, name: '🌋 小四・熾熱山脈', sheet: ['volcano'], bg: 'assets/rpg/bg-canyon.webp', boss: 4,
+      grade: 4, name: '🌋 小四・熾熱山脈', sheet: ['volcano', 'abyss', 'demon'], bg: 'assets/rpg/bg-canyon.webp', boss: 4,
       stages: [
         { name: '星期', words: [['Monday', '星期一'], ['Tuesday', '星期二'], ['Wednesday', '星期三'], ['Thursday', '星期四'], ['Friday', '星期五'], ['Saturday', '星期六'], ['Sunday', '星期日'], ['week', '星期；週'], ['weekend', '週末']] },
         { name: '天氣', words: [['sunny', '晴朗的'], ['rainy', '下雨的'], ['cloudy', '多雲的'], ['windy', '颳風的'], ['snowy', '下雪的'], ['warm', '溫暖的'], ['cool', '涼爽的'], ['weather', '天氣']] },
@@ -184,7 +184,7 @@ window.HERO_DATA = (function () {
       ],
     },
     {
-      grade: 5, name: '❄️ 小五・冰雪王國', sheet: ['ice', 'galaxy'], bg: 'assets/rpg/bg-wasteland.webp', boss: 5,
+      grade: 5, name: '❄️ 小五・冰雪王國', sheet: ['ice', 'galaxy', 'abyss', 'demon'], bg: 'assets/rpg/bg-wasteland.webp', boss: 5,
       stages: [
         { name: '月份（上）', words: [['January', '一月'], ['February', '二月'], ['March', '三月'], ['April', '四月'], ['May', '五月'], ['June', '六月']] },
         { name: '月份（下）', words: [['July', '七月'], ['August', '八月'], ['September', '九月'], ['October', '十月'], ['November', '十一月'], ['December', '十二月']] },
@@ -236,7 +236,7 @@ window.HERO_DATA = (function () {
       ],
     },
     {
-      grade: 6, name: '🏰 小六・暗影城堡', sheet: ['castle', 'grammar'], bg: 'assets/rpg/bg-factory.webp', boss: 6,
+      grade: 6, name: '🏰 小六・暗影城堡', sheet: ['castle', 'grammar', 'abyss', 'demon'], bg: 'assets/rpg/bg-factory.webp', boss: 6,
       stages: [
         { name: '國家', words: [['Taiwan', '台灣'], ['Japan', '日本'], ['Korea', '韓國'], ['America', '美國'], ['Canada', '加拿大'], ['France', '法國'], ['England', '英國；英格蘭'], ['Thailand', '泰國']] },
         { name: '位置方向', words: [['left', '左邊'], ['right', '右邊'], ['front', '前面'], ['behind', '在…後面'], ['next', '旁邊的；下一個'], ['between', '在…之間'], ['near', '近的'], ['far', '遠的']] },

@@ -154,7 +154,23 @@
     grade: 1, cleared: {}, letters: {}, gold: 0, points: 0, forged: 0,
     unlocked: ['hero'], chars: { hero: { lv: 1, exp: 0 } },
     owned: { sword: [], staff: [], shield: [], greatsword: [] }, equip: {}, clozePick: 'shield',
+    lost: {},                                 // 每位角色少了多少血（帶到下一關）
+    bag: { heal: 0, hint: 0, demon: 0 },      // 背包裡的藥水
+    hintCharges: 0,                           // 提示藥水剩幾次
   };
+  /* ---------- 藥水：每一關約 5% 會從寶箱掉一瓶 ---------- */
+  const POTION_RATE = 0.05;
+  const POTIONS = {
+    heal: { name: '回復藥水', icon: '❤️', w: 40, desc: '全隊 HP 回滿（不會超過最大 HP），隨時都能喝' },
+    hint: { name: '提示藥水', icon: '💡', w: 40, desc: '喝下去，接下來 2 題直接告訴你答案' },
+    demon: { name: '惡魔藥水', icon: '😈', w: 5, desc: '戰鬥中使用：所有怪物扣掉目前 40% 的血' },
+  };
+  function rollPotion() {
+    const ids = Object.keys(POTIONS), total = ids.reduce((s, k) => s + POTIONS[k].w, 0);
+    let r = Math.random() * total;
+    for (const k of ids) { r -= POTIONS[k].w; if (r < 0) return k; }
+    return 'heal';
+  }
   function load() {
     try {
       const v3 = localStorage.getItem(SAVE);
@@ -164,7 +180,7 @@
       if (v2 && v2.letters) Object.entries(v2.letters).forEach(([k, n]) => { const c = k.toLowerCase(); S.letters[c] = (S.letters[c] || 0) + n; });
     } catch (e) {}
   }
-  const persist = () => { try { localStorage.setItem(SAVE, JSON.stringify(S)); } catch (e) {} };
+  const persist = () => { try { localStorage.setItem(SAVE, JSON.stringify(S)); } catch (e) {} try { updateBagBadge(); } catch (e) {} };
 
   /* ---------- 角色數值 ---------- */
   const lvOf = (id) => (S.chars[id] || { lv: 1 }).lv;
@@ -237,15 +253,20 @@
       mons.push({
         word: w[0], ch: w[1], hp: max, max, boss: isBoss,
         atk: Math.round(MON_ATK[gi] * (isBoss ? 1.6 : 1)),
-        img: isBoss ? `assets/hero/m-boss-${g.boss}.webp` : `assets/hero/m-${pick(g.sheet)}-${1 + Math.floor(Math.random() * 8)}.webp`,
+        img: isBoss ? `assets/hero/m-boss-${g.boss}.webp` : `assets/hero/m-${pick(g.sheet)}-${1 + Math.floor(Math.random() * 9)}.webp`,
       });
     }
     if (boss && mons.length > 1) mons.splice(1, 0, mons.shift()); // 魔王站中間
+    // 血量會帶到下一關；魔王關開打前全員回滿
+    if (boss) S.lost = {};
     B = {
       si, stage, boss, mons, grade: S.grade, key: stageKey(S.grade, si), first: !S.cleared[stageKey(S.grade, si)],
-      party: partyIds().map((id) => ({ id, hp: statHp(id), max: statHp(id), def: false })),
+      party: partyIds().map((id) => { const max = statHp(id); return { id, max, hp: Math.max(0, max - Math.min(max, S.lost[id] || 0)), def: false }; }),
       turn: 0, target: 0, busy: true, over: false, mode: null, unlocks: [],
     };
+    // 倒下的夥伴帶著 1 點血進場，免得一開場就只剩一個人
+    B.party.forEach((p) => { if (p.hp <= 0) p.hp = 1; });
+    syncHp();
     $('#field-bg').style.backgroundImage = `url("${g.bg}")`;
     $('#game').classList.remove('asking');
     Music.play(boss ? 'boss' : 'bgm');
@@ -254,7 +275,7 @@
     $('#stage-num').innerText = `${S.grade}-${si + 1}`;
     renderMonsters(true);
     renderParty();
-    say(msg || `${boss ? '👑 ' : ''}<b>${esc(mons.map((m) => shortCh(m.ch) + '怪').join('、'))}</b> 出現了！`);
+    say(msg || `${boss ? '👑 魔王關！隊伍 HP 全部回滿了。<br>' : ''}<b>${esc(mons.map((m) => shortCh(m.ch) + '怪').join('、'))}</b> 出現了！`);
     const b = B;
     setTimeout(() => { if (B === b) { b.busy = false; beginTurn(); } }, 900);
   }
@@ -321,15 +342,21 @@
     showCommands();
   }
   const nextTurn = () => { B.turn = (B.turn + 1) % B.party.length; beginTurn(); };
+  // 把戰鬥中的血量記進存檔（少了多少血），下一關、重新整理都接得上
+  function syncHp() {
+    if (!B || !B.party) return;
+    B.party.forEach((p) => { S.lost[p.id] = p.max - p.hp; });
+    persist();
+  }
 
   function showCommands() {
     const p = B.party[B.turn], c = CH[p.id];
     const atk = { spell: '⚔️ 攻擊<small>拼出怪物的單字</small>', talk: '✨ 咒文<small>答對文法對話</small>', cloze: '📜 填空<small>答對句型填空</small>' }[c.type];
     $('#game').classList.remove('asking');
-    con.innerHTML = `<div class="msg"><b>${c.name}</b> 要怎麼做？</div>
+    con.innerHTML = `<div class="msg"><b>${c.name}</b> 要怎麼做？${S.hintCharges > 0 ? `<span class="note">（💡 提示藥水還有 ${S.hintCharges} 次：攻擊會直接看到答案）</span>` : ''}</div>
       <div class="cmds">
         <button class="cmd" data-cmd="attack">${atk}</button>
-        <button class="cmd" data-cmd="defend">🛡️ 防禦<small>會給拼音提示</small></button>
+        <button class="cmd defend" data-cmd="defend">🛡️ 防禦<small>👀 直接看答案！<br>怪物打你只有一半痛</small></button>
         <button class="cmd" data-cmd="run">🏃 逃跑<small>重新遇敵</small></button>
       </div>`;
     con.querySelectorAll('[data-cmd]').forEach((b) => b.onclick = () => onCommand(b.dataset.cmd));
@@ -339,7 +366,12 @@
     if (B.busy || B.over) return;
     beep(660, 'triangle', 0.05, 0.08);
     const p = B.party[B.turn], c = CH[p.id];
-    if (cmd === 'attack') ({ spell: askSpell, talk: askTalk, cloze: askCloze })[c.type]();
+    if (cmd === 'attack') {
+      // 喝過提示藥水：這題直接給答案（不算解鎖點數，但怪物不會打你）
+      const free = S.hintCharges > 0;
+      if (free) { S.hintCharges--; persist(); updateBagBadge(); }
+      ({ spell: askSpell, talk: askTalk, cloze: askCloze })[c.type](free);
+    }
     else if (cmd === 'defend') defend(p, c);
     else if (cmd === 'run') {
       B.busy = true; const b = B;
@@ -572,6 +604,7 @@
     mon.el.animate([{ transform: 'translateY(0) scale(1)' }, { transform: 'translateY(30px) scale(1.18)' }, { transform: 'translateY(0) scale(1)' }], { duration: 320, easing: 'ease-in-out' });
     await sleep(180);
     victim.hp = Math.max(0, victim.hp - dmg);
+    syncHp();
     beep(200, 'sawtooth', 0.2, 0.2);
     note(`<b>${esc(shortCh(mon.ch))}怪</b> 的攻擊！${guarded ? '<b>盾戰士</b> 挺身擋下！' : ''}<b>${CH[victim.id].name}</b> 受到 ${dmg} 點傷害${victim.hp <= 0 ? '，倒下了…' : (mult < 1 ? '（防禦中，傷害減半）' : '。再試一次！')}`);
     renderParty();
@@ -589,6 +622,8 @@
     $('#game').classList.remove('asking');
     beep(523, 'triangle', 0.15, 0.2); setTimeout(() => beep(659, 'triangle', 0.15, 0.2), 150); setTimeout(() => beep(784, 'triangle', 0.3, 0.2), 300);
     renderParty();
+    // 這一關有 5% 機會：其中一個寶箱裡藏著藥水
+    if (Math.random() < POTION_RATE) pick(B.mons).potion = rollPotion();
     con.innerHTML = `<div class="msg">🎉 怪物全滅，都變成<b>寶箱</b>了！點上面的寶箱打開，收集英文字母。</div>
       <div class="row"><span></span><button class="btn" id="open-all">全部打開</button></div>`;
     $('#open-all').onclick = async () => { for (const m of B.mons) if (!m.opened) { openChest(m); await sleep(350); } };
@@ -613,6 +648,13 @@
     coinSfx(m.boss);
     const pt = point(m.el);
     J.floatText(fx, pt.x, pt.y - 20, '+ ' + got.join(' ') + (gold ? '  ★1' : ''), 'loot');
+    if (m.potion) {
+      const po = POTIONS[m.potion];
+      S.bag[m.potion] = (S.bag[m.potion] || 0) + 1;
+      persist(); updateBagBadge();
+      setTimeout(() => { J.floatText(fx, pt.x, pt.y - 60, `${po.icon} ${po.name}！`, 'crit'); beep(988, 'triangle', 0.25, 0.15); }, 400);
+      note(`🎁 寶箱裡有 <b>${po.icon} ${po.name}</b>！已經放進下面的 🎒 背包了。`);
+    }
     const b = B;
     if (b.mons.every((x) => x.opened)) setTimeout(() => finishBattle(b), 900);
   }
@@ -634,10 +676,15 @@
       if (up) ups.push({ id: p.id, lv: st.lv, evolved: tierOf(p.id) > t0 });
     });
     if (b.first) S.cleared[b.key] = true;
+    // 過關休息：每個人回復「損失血量」的一半，下一關帶著剩下的血繼續
+    let healed = 0;
+    b.party.forEach((p) => { const lost = p.max - p.hp, back = Math.ceil(lost / 2); healed += back; S.lost[p.id] = lost - back; });
     persist();
     if (B !== b) return;                      // 已經去別關了：只記錄，不跳結算視窗
     const g = GR[b.grade - 1], last = b.si === g.stages.length - 1;
+    const nextBoss = b.si + 1 === g.stages.length - 1;
     let html = `<h2>${b.boss ? '👑 擊敗魔王！' : '🎉 勝利！'}</h2><p class="note">隊伍獲得 ${exp} 點經驗值${b.first ? '' : '<br>（已通過的關卡：字母只掉 1/3、經驗只有 1/5，去挑戰新關卡獎勵比較多！）'}</p>`;
+    html += `<p class="note">${nextBoss ? '👑 下一關是魔王！開打前全員 HP 回滿。' : healed ? `❤️ 休息一下：回復了損失 HP 的一半（共 ${healed}），剩下的傷要帶到下一關喔！` : '❤️ 隊伍沒有受傷，太厲害了！'}</p>`;
     ups.forEach((u) => {
       html += u.evolved
         ? `<div style="margin:10px 0"><img class="pop-img" src="${imgOf(u.id)}" alt=""><div style="color:var(--gold);font-weight:900">✨ ${CH[u.id].name} 升到 Lv.${u.lv}，外觀進化了！</div></div>`
@@ -665,7 +712,7 @@
     await sleep(400);
     if (B !== b) return;
     showModal(`<h2 style="color:var(--red)">💀 全滅了…</h2><p class="note" style="margin:6px 0 12px">別灰心！收集到的字母都還在。<br>回到營火休息，HP 全滿再挑戰一次吧！</p><button class="btn" id="retry">🔥 重新挑戰</button>`);
-    $('#retry').onclick = () => { closeModal(); startStage(b.si); };
+    $('#retry').onclick = () => { closeModal(); S.lost = {}; persist(); startStage(b.si); };
   }
 
   /* ========================================================
@@ -885,6 +932,72 @@
   $('#nav-battle').onclick = () => show('battle');
   $('#nav-forge').onclick = () => show('forge');
   $('#nav-bar').onclick = () => show('bar');
+  $('#nav-bag').onclick = () => openBag();
+
+  /* ========================================================
+     背包：藥水
+     ======================================================== */
+  const inBattle = () => B && !B.over && !$('#scene-battle').hidden;
+  function updateBagBadge() {
+    const n = Object.values(S.bag).reduce((a, x) => a + x, 0);
+    const b = $('#bag-count'); b.innerText = n; b.hidden = !n;
+    // 鍛造屋：有武器可以做就亮紅點；夥伴：有角色可以升級外觀/解鎖時提示
+    const canForge = Object.keys(CH).some((id) => S.unlocked.includes(id) && WP[CH[id].weapon].some((w, i) => !S.owned[CH[id].weapon].includes(i) && w.words && recipeState(w).ready));
+    $('#nav-forge').classList.toggle('alert', canForge);
+  }
+  function openBag() {
+    const rows = Object.keys(POTIONS).map((k) => {
+      const po = POTIONS[k], n = S.bag[k] || 0;
+      let why = '';
+      if (!n) why = '還沒有';
+      else if (k === 'demon' && !inBattle()) why = '戰鬥中才能用';
+      else if (k !== 'hint' && inBattle() && B.busy) why = '等一下再用';
+      return `<div class="bag-row win"><span class="ico">${po.icon}</span><div class="body"><b>${po.name}</b> ×${n}<div class="note">${po.desc}</div></div>
+        <button class="btn ${why ? '' : 'fire'}" data-use="${k}" ${why ? 'disabled' : ''}>${why || '使用'}</button></div>`;
+    }).join('');
+    showModal(`<h2>🎒 背包</h2>
+      <p class="note">寶箱偶爾會掉藥水（每關大約 5%）。${S.hintCharges ? `<br>💡 提示藥水效果還剩 <b>${S.hintCharges}</b> 次。` : ''}</p>
+      <div class="bag-list">${rows}</div>
+      <button class="btn blue" id="m-close" style="margin-top:12px">關閉</button>`);
+    $('#m-close').onclick = closeModal;
+    document.querySelectorAll('[data-use]').forEach((b) => b.onclick = () => { if (!b.disabled) usePotion(b.dataset.use); });
+  }
+  async function usePotion(k) {
+    if (!(S.bag[k] > 0)) return;
+    if (k === 'demon' && !inBattle()) return;
+    S.bag[k]--; persist(); updateBagBadge(); closeModal();
+    beep(880, 'triangle', 0.2, 0.15);
+    if (k === 'heal') {
+      S.lost = {};
+      if (B && B.party && !B.over) { B.party.forEach((p) => { p.hp = p.max; }); syncHp(); renderParty(); B.party.forEach((p) => p.el && J.flash(p.el, 'white')); note('❤️ 喝下回復藥水，全隊 HP 回滿了！'); }
+      persist();
+      return;
+    }
+    if (k === 'hint') {
+      S.hintCharges += 2; persist(); updateBagBadge();
+      // 正在作答：這一題馬上給答案
+      if (inBattle() && !B.busy && B.mode) {
+        S.hintCharges--; persist();
+        const c = CH[B.party[B.turn].id];
+        ({ spell: askSpell, talk: askTalk, cloze: askCloze })[c.type](true);
+      } else if (inBattle() && !B.busy) showCommands();
+      return;
+    }
+    // 惡魔藥水：所有怪物扣掉目前 40% 的血（不佔回合）
+    const b = B;
+    b.busy = true;
+    say('😈 打開惡魔藥水…黑色的煙霧包圍了怪物！');
+    flashTint('#7a1fa2', 0.5);
+    J.shake(field, 1.5);
+    await sleep(400);
+    await Promise.all(alive().map((m, i) => hitMon(m, Math.max(1, Math.round(m.hp * 0.4)), 4, '#c77dff', i > 0)));
+    if (B !== b) return;
+    if (!alive().length) return victory();
+    b.busy = false;
+    const saw = b.party[b.turn].sawAnswer, def = b.party[b.turn].def;
+    beginTurn();
+    b.party[b.turn].sawAnswer = saw; b.party[b.turn].def = def;   // 喝藥水不會重置「看過答案」
+  }
   $('#chip-points').onclick = () => show('bar');
   $('#chip-music').onclick = () => { $('#chip-music').style.opacity = Music.toggle() ? 1 : 0.4; };
   $('#chip-sound').onclick = () => {
@@ -938,6 +1051,7 @@
   /* ---------- 啟動 ---------- */
   load();
   if (!GR[S.grade - 1] || !GR[S.grade - 1].stages.length) S.grade = 1;
+  S.lost = S.lost || {}; S.bag = Object.assign({ heal: 0, hint: 0, demon: 0 }, S.bag); S.hintCharges = S.hintCharges || 0;
   S.unlocked.forEach((id) => { if (!S.chars[id]) S.chars[id] = { lv: 1, exp: 0 }; });
   $('#points').innerText = S.points;
   $('#chip-sound').innerText = soundOn ? '🔊' : '🔇';
@@ -946,5 +1060,5 @@
   persist();
   startStage(nextStageIdx());
 
-  window.__hero = { get S() { return S; }, get B() { return B; }, addPoint, startStage, show, Music, speak, hitSfx, anvilSfx, coinSfx }; // 測試用
+  window.__hero = { get S() { return S; }, get B() { return B; }, addPoint, startStage, show, Music, speak, hitSfx, anvilSfx, coinSfx, usePotion, openBag }; // 測試用
 })();

@@ -204,15 +204,43 @@ select.grade {
 .stage-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; text-align: left; }
 
 /* 底部導覽 */
-nav { display: flex; flex: none; height: 52px; background: #070b1a; border-top: 2px solid #1d2a6b; }
-nav button { flex: 1; background: none; border: none; color: var(--dim); font-weight: 800; font-size: .85rem; cursor: pointer; }
-nav button.active { color: var(--gold); border-top: 3px solid var(--gold); background: #0d1430; }
+/* 底部選單：大圖示＋字，每個按鈕有自己的顏色框，比較看得出來可以按 */
+nav { display: flex; flex: none; gap: 6px; height: 64px; padding: 5px 6px; background: #070b1a; border-top: 2px solid #1d2a6b; }
+nav button { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  background: linear-gradient(#1b2558, #111842); border: 2px solid #3a4a9a; border-radius: 12px; color: #fff; font-weight: 900; font-size: .85rem; cursor: pointer;
+  box-shadow: 0 3px 0 #05081a; transition: transform .1s; }
+nav button .ni { font-size: 1.55rem; line-height: 1; filter: drop-shadow(0 2px 2px rgba(0,0,0,.6)); }
+nav button:active { transform: translateY(2px); box-shadow: 0 1px 0 #05081a; }
+#nav-battle { border-color: #e0a63a; }
+#nav-bag { border-color: #4fc36b; }
+#nav-forge { border-color: #ff6a3a; }
+#nav-bar { border-color: #5aa8ff; }
+nav button.active { background: linear-gradient(#ffd34d, #e09a1c); color: #2a1600; border-color: #fff3b0; }
+nav .badge { position: absolute; top: -7px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 99px; background: #e8344a; color: #fff;
+  font-size: .75rem; line-height: 20px; border: 2px solid #fff; }
+nav .badge.dot { display: none; }
+nav button.alert .badge.dot { display: block; }
+nav button.alert { animation: navPulse 1.2s infinite ease-in-out; }
+@keyframes navPulse { 50% { box-shadow: 0 0 14px #ff6a3a, 0 3px 0 #05081a; } }
 @media (max-width: 780px) {
-  nav { padding-left: 134px; }  /* 左下角有網站共用的「遊戲樂園」按鈕 */
-  nav button { font-size: .75rem; }
+  nav { padding-left: 134px; gap: 4px; }  /* 左下角有網站共用的「遊戲樂園」按鈕 */
+  nav button { font-size: .7rem; border-radius: 10px; }
+  nav button .ni { font-size: 1.35rem; }
 }
+/* 防禦按鈕：提示看答案，做成明顯的藍框 */
+.cmd.defend { border: 2px solid #5aa8ff; background: rgba(90,168,255,.12); }
+.cmd.defend small { color: #9fd0ff; }
+/* 背包 */
+.bag-list { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.bag-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }
+.bag-row .ico { font-size: 2rem; }
+.bag-row .body { flex: 1; }
+.bag-row .btn[disabled] { opacity: .5; font-size: .8rem; }
 @media (max-height: 720px) {
   .field { height: clamp(250px, 48vh, 380px); }
   .key { min-width: 40px; height: 40px; }
   .slot { width: 32px; height: 38px; }
 }
+
+/* 深色的克蘇魯／魔物怪：加一圈淡淡的光，背景很花時也看得清楚 */
+.mon img[src*="m-abyss"], .mon img[src*="m-demon"] { filter: brightness(1.18) drop-shadow(0 0 3px rgba(255,255,255,.75)) drop-shadow(0 0 10px rgba(190,140,255,.55)); }
