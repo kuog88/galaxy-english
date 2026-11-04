@@ -215,10 +215,17 @@
     return { x: b.left - a.left + b.width / 2, y: b.top - a.top + b.height * 0.5 };
   }
 
+  // 關卡要照順序：前面每一關都通過了，這一關才開放（魔王也一樣）
+  function stageOpen(grade, i) {
+    for (let k = 0; k < i; k++) if (!S.cleared[stageKey(grade, k)]) return false;
+    return true;
+  }
+
   function startStage(si, msg) {
     const g = G(), gi = S.grade - 1;
     if (!g.stages.length) return say('這個年級的題目還在準備中（第二階段開放）。');
     si = Math.max(0, Math.min(si, g.stages.length - 1));
+    if (!stageOpen(S.grade, si)) si = nextStageIdx();
     const stage = g.stages[si], boss = si === g.stages.length - 1;
     const words = shuffle(stage.words);
     const n = 1 + Math.floor(Math.random() * 3);
@@ -235,19 +242,19 @@
     }
     if (boss && mons.length > 1) mons.splice(1, 0, mons.shift()); // 魔王站中間
     B = {
-      si, stage, boss, mons, key: stageKey(S.grade, si), first: !S.cleared[stageKey(S.grade, si)],
+      si, stage, boss, mons, grade: S.grade, key: stageKey(S.grade, si), first: !S.cleared[stageKey(S.grade, si)],
       party: partyIds().map((id) => ({ id, hp: statHp(id), max: statHp(id), def: false })),
       turn: 0, target: 0, busy: true, over: false, mode: null, unlocks: [],
     };
     $('#field-bg').style.backgroundImage = `url("${g.bg}")`;
     $('#game').classList.remove('asking');
     Music.play(boss ? 'boss' : 'bgm');
-    $('#stage-tag').innerText = `${boss ? '👑 魔王 ' : ''}小${'一二三四五六'[gi]} 第 ${si + 1} 關・${stage.name}${B.first ? '' : '（複習）'}`;
+    $('#stage-tag').innerText = `${boss ? '👑 魔王 ' : ''}小${'一二三四五六'[gi]} 第 ${si + 1} 關・${stage.name}${B.first ? '' : '（複習：獎勵較少）'}`;
     $('#stage-tag').classList.toggle('boss', boss);
     $('#stage-num').innerText = `${S.grade}-${si + 1}`;
     renderMonsters(true);
     renderParty();
-    say(msg || `${boss ? '👑 ' : ''}<b>${esc(mons.map((m) => m.ch + '怪').join('、'))}</b> 出現了！`);
+    say(msg || `${boss ? '👑 ' : ''}<b>${esc(mons.map((m) => shortCh(m.ch) + '怪').join('、'))}</b> 出現了！`);
     const b = B;
     setTimeout(() => { if (B === b) { b.busy = false; beginTurn(); } }, 900);
   }
@@ -267,6 +274,8 @@
   }
 
   /* ---------- 畫面 ---------- */
+  // 怪物名字只放簡短中文（括號說明、分號後的第二個意思省略），完整意思留在題目上
+  const shortCh = (ch) => ch.replace(/（.*?）/g, '').split('；')[0];
   function renderMonsters(enter) {
     const box = $('#monsters');
     box.innerHTML = '';
@@ -275,9 +284,7 @@
       el.className = 'mon' + (m.boss ? ' boss' : '') + (m.chest ? ' chest' : '') + (m.opened ? ' opened' : '')
         + (!m.chest && i === B.target && !B.over ? ' target' : '');
       const src = m.chest ? `assets/hero/p-chest-${m.boss ? 'gold' : 'wood'}${m.opened ? '-open' : ''}.webp` : m.img;
-      // 名牌只放簡短中文（括號說明、分號後的第二個意思省略）
-      const short = m.ch.replace(/（.*?）/g, '').split('；')[0];
-      el.innerHTML = `<img src="${src}" alt=""><span class="tag">${m.chest ? (m.opened ? '已打開' : (m.boss ? '✨ 金寶箱' : '寶箱')) : esc(short) + '怪'}</span>`
+      el.innerHTML = `<img src="${src}" alt=""><span class="tag">${m.chest ? (m.opened ? '已打開' : (m.boss ? '✨ 金寶箱' : '寶箱')) : esc(shortCh(m.ch)) + '怪'}</span>`
         + (m.chest ? '' : `<span class="bar"><i style="width:${(m.hp / m.max) * 100}%"></i></span>`);
       el.onclick = () => (m.chest ? openChest(m) : chooseTarget(i));
       box.appendChild(el);
@@ -306,6 +313,7 @@
     let guard = 0;
     while (B.party[B.turn].hp <= 0 && guard++ < 5) B.turn = (B.turn + 1) % B.party.length;
     B.party[B.turn].def = false;
+    B.party[B.turn].sawAnswer = false;   // 這回合有沒有用防禦看過答案
     if (!B.mons[B.target] || B.mons[B.target].hp <= 0) B.target = B.mons.findIndex((x) => x.hp > 0);
     B.mode = null;
     renderParty();
@@ -351,6 +359,7 @@
     if (B !== b || b.over) return;
     if (p.hp <= 0) { await sleep(500); b.busy = false; return nextTurn(); }
     b.busy = false;
+    p.sawAnswer = true;  // 看過答案了：這回合就算回到指令再攻擊，也不算「第一次就答對」
     ({ spell: askSpell, talk: askTalk, cloze: askCloze })[c.type](true);
   }
 
@@ -369,7 +378,7 @@
     const p = B.party[B.turn], mon = B.mons[B.target];
     B.mode = 'spell';
     $('#game').classList.add('asking');
-    B.q = { word: mon.word, pos: 0, wrong: 0, tries: reveal ? 1 : 0, revealed: !!reveal };
+    B.q = { word: mon.word, pos: 0, wrong: 0, tries: reveal || p.sawAnswer ? 1 : 0, revealed: !!reveal };
     const tiles = shuffle(mon.word.split('').concat([pick('bcdfghklmnprstw'), pick('aeiou')]));
     const hint = reveal ? `🛡️ 正確拼法：<b style="font-size:1.2rem;letter-spacing:3px">${esc(mon.word)}</b>`
       : (alive().length > 1 ? '點上面的怪物可以換攻擊目標' : '');
@@ -424,7 +433,7 @@
     const p = B.party[B.turn];
     B.mode = mode;
     $('#game').classList.add('asking');
-    B.q = { opts, tries: reveal ? 1 : 0, readAfter };
+    B.q = { opts, tries: reveal || p.sawAnswer ? 1 : 0, readAfter };
     const okIdx = opts.findIndex((o) => o.ok);
     con.innerHTML = `<div class="row"><div class="msg"><b>${CH[p.id].name}</b>：${mode === 'talk' ? '選出正確的回答' : '選出空格裡的字'}！</div><span>${mode === 'talk' ? '<button class="small-btn" id="say">🔊</button> ' : ''}${backBtn}</span></div>
       ${qHtml}<div class="hint" id="hint">${reveal ? `🛡️ 正確答案是 <b>${'ABC'[okIdx]}. ${esc(opts[okIdx].en)}</b>${zh ? `（${esc(zh)}）` : ''}` : ''}</div>
@@ -481,11 +490,11 @@
     await sleep(200);
     if (lvl >= 3) flashTint(color, lvl >= 4 ? 0.55 : 0.3);
     const base = statAtk(id);
-    await Promise.all(targets.map((m) => {
+    await Promise.all(targets.map((m, i) => {
       let d = base * (0.9 + Math.random() * 0.2);
       if (c.aoe && !c.noFalloff && m !== main) d *= 0.7;       // 魔法使：其他怪物傷害 70%
       d = Math.max(1, Math.min(Math.round(d), Math.floor(m.max * HIT_CAP)));
-      return hitMon(m, d, lvl, color);
+      return hitMon(m, d, lvl, color, i > 0);                  // 範圍攻擊只響一次打擊聲，避免疊太大聲
     }));
     if (B !== b) return;
     renderParty();
@@ -496,10 +505,10 @@
     nextTurn();
   }
 
-  async function hitMon(m, dmg, lvl, color) {
+  async function hitMon(m, dmg, lvl, color, quiet) {
     if (!m || m.hp <= 0) return;
     const pt = point(m.el), img = m.el.querySelector('img');
-    hitSfx(1 + lvl);
+    if (!quiet) hitSfx(1 + lvl);
     J.sparks(fx, pt.x, pt.y, lvl >= 1 ? 'assets/hero/p-sparkle.webp' : 'assets/rpg/ui-hit.webp');
     if (lvl >= 2) slash(pt, color);
     if (lvl >= 4) ring(pt, color);
@@ -564,7 +573,7 @@
     await sleep(180);
     victim.hp = Math.max(0, victim.hp - dmg);
     beep(200, 'sawtooth', 0.2, 0.2);
-    note(`<b>${esc(mon.ch)}怪</b> 的攻擊！${guarded ? '<b>盾戰士</b> 挺身擋下！' : ''}<b>${CH[victim.id].name}</b> 受到 ${dmg} 點傷害${victim.hp <= 0 ? '，倒下了…' : (mult < 1 ? '（防禦中，傷害減半）' : '。再試一次！')}`);
+    note(`<b>${esc(shortCh(mon.ch))}怪</b> 的攻擊！${guarded ? '<b>盾戰士</b> 挺身擋下！' : ''}<b>${CH[victim.id].name}</b> 受到 ${dmg} 點傷害${victim.hp <= 0 ? '，倒下了…' : (mult < 1 ? '（防禦中，傷害減半）' : '。再試一次！')}`);
     renderParty();
     const pt = point(victim.el);
     J.floatText(fx, pt.x, pt.y - 30, '-' + dmg, 'ouch');
@@ -590,22 +599,31 @@
     m.el.classList.add('opened');
     m.el.querySelector('img').src = `assets/hero/p-chest-${m.boss ? 'gold' : 'wood'}-open.webp`;
     m.el.querySelector('.tag').innerText = '已打開';
-    const got = m.word.toLowerCase().split('');            // 背包裡的字母一律存小寫
+    let got = m.word.toLowerCase().split('');              // 背包裡的字母一律存小寫
     if (m.boss) for (let i = 0; i < 3; i++) got.push(pick('abcdefghiklmnoprstuwy'));
+    let gold = m.boss ? 1 : 0;
+    // 已通過的關卡再打一次：字母只剩 1/3、金字母只有 1/3 的機會（避免一直刷簡單關）
+    if (!B.first) {
+      got = shuffle(got).slice(0, Math.max(1, Math.ceil(got.length / 3)));
+      if (gold && Math.random() >= 1 / 3) gold = 0;
+    }
     got.forEach((c) => { S.letters[c] = (S.letters[c] || 0) + 1; });
-    if (m.boss) S.gold++;
+    S.gold += gold;
     persist();
     coinSfx(m.boss);
     const pt = point(m.el);
-    J.floatText(fx, pt.x, pt.y - 20, '+ ' + got.join(' ') + (m.boss ? '  ★1' : ''), 'loot');
-    if (B.mons.every((x) => x.opened)) setTimeout(finishBattle, 900);
+    J.floatText(fx, pt.x, pt.y - 20, '+ ' + got.join(' ') + (gold ? '  ★1' : ''), 'loot');
+    const b = B;
+    if (b.mons.every((x) => x.opened)) setTimeout(() => finishBattle(b), 900);
   }
 
-  function finishBattle() {
-    const b = B, gi = S.grade - 1;
+  // 結算：就算玩家在這 0.9 秒內跳去別關，經驗值和通關紀錄也一定記下來
+  function finishBattle(b) {
     if (!b || b.mode !== 'loot') return;
     b.mode = 'done';
-    const exp = b.mons.reduce((s, m) => s + (m.boss ? 50 : 10) * (gi + 1), 0);
+    const gi = b.grade - 1;
+    let exp = b.mons.reduce((s, m) => s + (m.boss ? 50 : 10) * (gi + 1), 0);
+    if (!b.first) exp = Math.max(1, Math.round(exp / 5));   // 複習關卡：經驗只有 1/5
     const ups = [];
     b.party.forEach((p) => {
       const st = S.chars[p.id];
@@ -617,8 +635,9 @@
     });
     if (b.first) S.cleared[b.key] = true;
     persist();
-    const g = G(), last = b.si === g.stages.length - 1;
-    let html = `<h2>${b.boss ? '👑 擊敗魔王！' : '🎉 勝利！'}</h2><p class="note">隊伍獲得 ${exp} 點經驗值</p>`;
+    if (B !== b) return;                      // 已經去別關了：只記錄，不跳結算視窗
+    const g = GR[b.grade - 1], last = b.si === g.stages.length - 1;
+    let html = `<h2>${b.boss ? '👑 擊敗魔王！' : '🎉 勝利！'}</h2><p class="note">隊伍獲得 ${exp} 點經驗值${b.first ? '' : '<br>（已通過的關卡：字母只掉 1/3、經驗只有 1/5，去挑戰新關卡獎勵比較多！）'}</p>`;
     ups.forEach((u) => {
       html += u.evolved
         ? `<div style="margin:10px 0"><img class="pop-img" src="${imgOf(u.id)}" alt=""><div style="color:var(--gold);font-weight:900">✨ ${CH[u.id].name} 升到 Lv.${u.lv}，外觀進化了！</div></div>`
@@ -628,13 +647,14 @@
       html += `<div style="margin:10px 0"><img class="pop-img" src="${imgOf(id)}" alt=""><div style="color:#7fe3ff;font-weight:900">🎊 新夥伴 ${CH[id].name} 加入了！</div><p class="note">${esc(CH[id].desc)}</p></div>`;
     });
     let next = b.si + 1 < g.stages.length ? b.si + 1 : 0, nextLabel = '下一關 ▶';
-    if (last && b.first && S.grade < GR.length && GR[S.grade].stages.length) nextLabel = `前往小${'一二三四五六'[S.grade]} ▶`;
+    const toNextGrade = last && b.first && b.grade < GR.length && GR[b.grade].stages.length;
+    if (toNextGrade) nextLabel = `前往小${'一二三四五六'[b.grade]} ▶`;
     else if (last && b.first) nextLabel = '回到第 1 關複習 ▶';
     html += `<button class="btn" id="go-next" style="margin-top:12px">${nextLabel}</button>`;
     showModal(html);
     $('#go-next').onclick = () => {
       closeModal();
-      if (last && b.first && S.grade < GR.length && GR[S.grade].stages.length) { S.grade++; persist(); setupGrades(); next = 0; }
+      if (toNextGrade) { S.grade = b.grade + 1; persist(); setupGrades(); next = 0; }
       walkTo(next);
     };
   }
@@ -719,11 +739,20 @@
     const c = CH[forgeChar], w = WP[c.weapon][forging.idx], words = w.words;
     const area = $('#forge-area');
     const done = forging.step >= words.length;
-    // 已拼好的字先扣掉，剩下的字母才能用
+    forging.pen = forging.pen || [];
+    // 已拼好的字先扣掉（看過答案的字要扣 2 倍），剩下的字母才能用
     const pool = Object.assign({}, S.letters);
-    words.slice(0, forging.step).join('').split('').forEach((ch) => pool[ch]--);
+    words.slice(0, forging.step).forEach((x, i) => { for (let r = 0; r < (forging.pen[i] ? 2 : 1); r++) x.split('').forEach((ch) => pool[ch]--); });
     forging.typed.forEach((ch) => pool[ch]--);
     const word = words[forging.step] || '';
+    // 看過答案：這個字還要再多付一份字母，先算夠不夠
+    const extraShort = forging.pen[forging.step] ? (() => {
+      const left = Object.assign({}, pool);
+      forging.typed.forEach((ch) => left[ch]++);                 // 正在拼的這份先放回去一起算
+      const need = {};
+      word.split('').forEach((ch) => { need[ch] = (need[ch] || 0) + 2; });
+      return Object.keys(need).filter((ch) => (left[ch] || 0) < need[ch]);
+    })() : [];
     area.innerHTML = `<div class="win" style="padding:12px;display:flex;flex-direction:column;gap:8px;text-align:center">
       <div class="row"><b style="color:var(--gold)">鍛造：${esc(w.name)}</b><button class="small-btn" id="f-cancel">✖ 取消</button></div>
       <img src="${D.weaponImg(c.weapon, forging.idx)}" alt="" style="width:90px;height:90px;object-fit:contain;margin:0 auto;filter:brightness(${done ? 1 : 0.35})">
@@ -731,7 +760,8 @@
       ${done ? `<p>全部拼對了！把字母丟進鐵爐吧！</p><button class="btn fire" id="f-throw">🔥 丟進鐵爐</button>`
         : `<div class="msg">拼出「<b>${esc(wordCh(word))}</b>」（${word.length} 個字母）</div>
         <div class="slots" id="f-slots">${word.split('').map((_, i) => `<span class="slot ${i < forging.typed.length ? 'filled' : ''} ${i === forging.typed.length ? 'active' : ''}">${forging.typed[i] || ''}</span>`).join('')}</div>
-        ${forging.answer ? `<div class="hint" style="font-size:1rem">❌ 拼錯了！這個字的拼法是：<b style="font-size:1.25rem;letter-spacing:3px;color:#7fe3ff">${esc(forging.answer)}</b></div>` : ''}
+        ${forging.answer ? `<div class="hint" style="font-size:1rem">❌ 拼錯了，打錯的字母被鐵爐燒掉了！這個字的拼法是：<b style="font-size:1.25rem;letter-spacing:3px;color:#7fe3ff">${esc(forging.answer)}</b>
+          <br><span style="font-size:.85rem">看過答案，這個字要用掉 <b>2 倍</b>的字母</span>${extraShort.length ? `<br><span style="color:var(--red)">字母不夠付 2 倍（還缺 ${extraShort.join(' ')}），先去冒險收集字母吧！</span>` : ''}</div>` : ''}
         <div class="keys">${Object.keys(pool).filter((ch) => S.letters[ch] > 0).sort().map((ch) => `<button class="key" data-l="${ch}" ${pool[ch] > 0 ? '' : 'disabled'}>${ch}<small>${pool[ch]}</small></button>`).join('')}</div>
         <div class="row"><button class="small-btn" id="f-back">⌫ 退一格</button><button class="small-btn" id="f-say">🔊 聽發音</button></div>`}
     </div>`;
@@ -743,13 +773,25 @@
       forging.typed.push(k.dataset.l);
       beep(500, 'sine', 0.06);
       if (forging.typed.length < word.length) return renderForgePanel();
-      if (forging.typed.join('') === word) { forging.step++; forging.typed = []; forging.answer = null; speak(word); beep(784, 'triangle', 0.2); renderForgePanel(); }
-      else {
+      if (forging.typed.join('') === word) {
+        if (extraShort.length) {                                  // 看過答案但字母不夠付 2 倍
+          forging.typed = [];
+          beep(150, 'sawtooth', 0.2, 0.15);
+          return renderForgePanel();
+        }
+        forging.step++; forging.typed = []; forging.answer = null; speak(word); beep(784, 'triangle', 0.2); renderForgePanel();
+      } else {
         renderForgePanel();
         const s = $('#f-slots'); s.classList.add('bad');
         beep(150, 'sawtooth', 0.2, 0.15);
-        // 拼錯：秀出正確拼法並念一次，字母不會扣
-        setTimeout(() => { forging.typed = []; forging.answer = word; renderForgePanel(); speak(word); }, 600);
+        // 拼錯：打錯的字母扣掉（燒掉），秀出正確拼法並念一次；這個字之後要用 2 倍字母
+        const wrong = forging.typed.slice();
+        setTimeout(() => {
+          wrong.forEach((ch) => { S.letters[ch]--; if (S.letters[ch] <= 0) delete S.letters[ch]; });
+          persist();
+          forging.typed = []; forging.answer = word; forging.pen[forging.step] = true;
+          renderForge(); speak(word);
+        }, 600);
       }
     });
   }
@@ -761,6 +803,9 @@
     // 字母方塊飛進鐵爐
     const from = btn.getBoundingClientRect(), to = furnace.getBoundingClientRect();
     const letters = w.words.join('').split('');
+    // 看過答案的字要扣 2 倍字母
+    const cost = [];
+    w.words.forEach((x, i) => { for (let r = 0; r < (forging.pen && forging.pen[i] ? 2 : 1); r++) cost.push(...x.split('')); });
     letters.forEach((ch, i) => {
       const t = document.createElement('div');
       t.className = 'key'; t.innerText = ch;
@@ -770,7 +815,7 @@
         { transform: `translate(${to.left + to.width / 2 - from.left - from.width / 2}px, ${to.top + to.height * 0.6 - from.top}px) scale(.3) rotate(360deg)`, opacity: 0.2 }],
       { duration: 600, delay: i * 70, easing: 'ease-in', fill: 'forwards' }).finished.then(() => t.remove(), () => t.remove());
     });
-    letters.forEach((ch) => { S.letters[ch]--; if (!S.letters[ch]) delete S.letters[ch]; });
+    cost.forEach((ch) => { S.letters[ch]--; if (S.letters[ch] <= 0) delete S.letters[ch]; });
     S.gold -= w.gold;
     beep(240, 'sawtooth', 0.5, 0.2);
     await sleep(500 + letters.length * 70);
@@ -863,10 +908,13 @@
   $('#grade').onchange = (e) => { S.grade = +e.target.value; persist(); show('battle'); startStage(nextStageIdx()); };
   $('#chip-stage').onclick = () => {
     const g = G();
-    showModal(`<h2>🗺️ ${esc(g.name)}</h2><div class="stage-list">${g.stages.map((st, i) => `<button class="cmd" data-st="${i}">${S.grade}-${i + 1} ${esc(st.name)}${i === g.stages.length - 1 ? ' 👑' : ''}<small>${S.cleared[stageKey(S.grade, i)] ? '✅ 已過關' : '⚔️ 挑戰'}</small></button>`).join('')}</div>
+    showModal(`<h2>🗺️ ${esc(g.name)}</h2><div class="stage-list">${g.stages.map((st, i) => {
+      const done = S.cleared[stageKey(S.grade, i)], open = stageOpen(S.grade, i);
+      return `<button class="cmd" data-st="${i}" ${open ? '' : 'disabled style="opacity:.4"'}>${S.grade}-${i + 1} ${esc(st.name)}${i === g.stages.length - 1 ? ' 👑' : ''}<small>${done ? '✅ 已過關（複習獎勵較少）' : open ? '⚔️ 挑戰' : `🔒 先通過第 ${i} 關`}</small></button>`;
+    }).join('')}</div>
       <button class="btn" id="m-close" style="margin-top:12px">關閉</button>`);
     $('#m-close').onclick = closeModal;
-    document.querySelectorAll('[data-st]').forEach((b) => b.onclick = () => { closeModal(); show('battle'); startStage(+b.dataset.st); });
+    document.querySelectorAll('[data-st]').forEach((b) => b.onclick = () => { if (b.disabled) return; closeModal(); show('battle'); startStage(+b.dataset.st); });
   };
 
   window.addEventListener('keydown', (e) => {
