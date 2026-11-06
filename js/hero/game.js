@@ -8,7 +8,8 @@
   const pick = (a) => a[Math.floor(Math.random() * a.length)];
   const shuffle = (arr) => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const TYPE_NAME = { spell: '單字', talk: '文法', cloze: '句型填空' };
+  const TYPE_NAME = { spell: '單字', talk: '文法', cloze: '句型填空', mixed: '單字＋填空' };
+  const PARTY_MAX = 3;
   const MON_HP = [40, 60, 85, 115, 150, 190];
   const MON_ATK = [6, 8, 11, 14, 18, 22];
   const HIT_CAP = 0.8;                      // 一下最多打掉怪物最大血量的 80%（不會一擊秒殺）
@@ -199,18 +200,25 @@
     while (g < GR.length && GR[g - 1].stages.length && S.cleared[stageKey(g, GR[g - 1].stages.length - 1)]) g++;
     return g;
   }
+  // 上場隊伍：從已解鎖的角色裡任選，最多 3 位（存在 S.party）
   function partyIds() {
-    const p = ['hero'];
-    if (S.unlocked.includes('mage')) p.push('mage');
-    const cl = S.unlocked.includes(S.clozePick) ? S.clozePick : ['shield', 'angel'].find((x) => S.unlocked.includes(x));
-    if (cl) p.push(cl);
+    let p = (S.party || []).filter((id, i, a) => CH[id] && S.unlocked.includes(id) && a.indexOf(id) === i).slice(0, PARTY_MAX);
+    if (!p.length) p = Object.keys(CH).filter((id) => S.unlocked.includes(id)).slice(0, PARTY_MAX);
     return p;
+  }
+  // 依角色出題：墮天使每次隨機考拼單字或句型填空
+  function askerOf(c) {
+    if (c.type === 'mixed') return Math.random() < 0.5 ? askSpell : askCloze;
+    return { spell: askSpell, talk: askTalk, cloze: askCloze }[c.type];
   }
   function addPoint() {
     S.points++;
     const fresh = [];
     Object.keys(CH).forEach((id) => {
-      if (!S.unlocked.includes(id) && S.points >= CH[id].unlock) { S.unlocked.push(id); S.chars[id] = { lv: 1, exp: 0 }; fresh.push(id); }
+      if (!S.unlocked.includes(id) && S.points >= CH[id].unlock) {
+        S.unlocked.push(id); S.chars[id] = { lv: 1, exp: 0 }; fresh.push(id);
+        const p = partyIds(); if (p.length < PARTY_MAX) S.party = p.concat(id);   // 隊伍還有空位就自動上場
+      }
     });
     persist();
     $('#points').innerText = S.points;
@@ -351,7 +359,7 @@
 
   function showCommands() {
     const p = B.party[B.turn], c = CH[p.id];
-    const atk = { spell: '⚔️ 攻擊<small>拼出怪物的單字</small>', talk: '✨ 咒文<small>答對文法對話</small>', cloze: '📜 填空<small>答對句型填空</small>' }[c.type];
+    const atk = { spell: '⚔️ 攻擊<small>拼出怪物的單字</small>', talk: '✨ 咒文<small>答對文法對話</small>', cloze: '📜 填空<small>答對句型填空</small>', mixed: '🗡️ 巨劍<small>隨機：拼單字或填空</small>' }[c.type];
     $('#game').classList.remove('asking');
     con.innerHTML = `<div class="msg"><b>${c.name}</b> 要怎麼做？${S.hintCharges > 0 ? `<span class="note">（💡 提示藥水還有 ${S.hintCharges} 次：攻擊會直接看到答案）</span>` : ''}</div>
       <div class="cmds">
@@ -370,7 +378,7 @@
       // 喝過提示藥水：這題直接給答案（不算解鎖點數，但怪物不會打你）
       const free = S.hintCharges > 0;
       if (free) { S.hintCharges--; persist(); updateBagBadge(); }
-      ({ spell: askSpell, talk: askTalk, cloze: askCloze })[c.type](free);
+      askerOf(c)(free);
     }
     else if (cmd === 'defend') defend(p, c);
     else if (cmd === 'run') {
@@ -392,7 +400,7 @@
     if (p.hp <= 0) { await sleep(500); b.busy = false; return nextTurn(); }
     b.busy = false;
     p.sawAnswer = true;  // 看過答案了：這回合就算回到指令再攻擊，也不算「第一次就答對」
-    ({ spell: askSpell, talk: askTalk, cloze: askCloze })[c.type](true);
+    askerOf(c)(true);
   }
 
   function chooseTarget(i) {
@@ -893,22 +901,30 @@
   function renderBar() {
     const page = $('#bar-page');
     page.innerHTML = `<h3>🍺 夥伴</h3>
-      <p class="note">⭐ 解鎖點數 <b style="color:var(--gold)">${S.points}</b>：${D.UNLOCK_NOTE}（答錯後再答對不算）。一次最多 3 位上場：單字、文法、句型填空各一位。</p>
+      <p class="note">⭐ 解鎖點數 <b style="color:var(--gold)">${S.points}</b>：${D.UNLOCK_NOTE}（答錯後再答對不算）。</p>
+      <p class="note">⚔️ 上場隊伍（${partyIds().length}/${PARTY_MAX}）：已解鎖的角色可以任意挑 ${PARTY_MAX} 位，按「上場／休息」調整，排在前面的先行動。</p>
       <div class="cards">${Object.keys(CH).map((id) => {
         const c = CH[id], have = S.unlocked.includes(id), st = S.chars[id] || { lv: 1, exp: 0 };
         const w = weaponOf(id);
         const prog = have ? `<div class="note">Lv.${st.lv}・HP ${statHp(id)}・攻擊 ${statAtk(id)}${c.guard ? `・減傷 ${defPct(id)}%` : ''}${w ? `・${esc(w.name)}` : ''}</div>
           <div class="prog"><i style="width:${(st.exp / expNeed(st.lv)) * 100}%"></i></div>`
           : `<div class="note">解鎖：⭐ ${Math.min(S.points, c.unlock)} / ${c.unlock}</div><div class="prog"><i style="width:${Math.min(1, S.points / c.unlock) * 100}%"></i></div>`;
-        const pickBtn = have && c.type === 'cloze' && S.unlocked.includes('shield') && S.unlocked.includes('angel')
-          ? (partyIds().includes(id) ? '<span class="note">✅ 填空位置上場中</span>' : `<button class="btn blue" data-pick="${id}">換上場</button>`) : '';
+        const team = partyIds(), on = team.includes(id);
+        let pickBtn = '';
+        if (have) {
+          if (on) pickBtn = `<div class="row"><span class="note" style="color:var(--gold)">✅ 上場中（第 ${team.indexOf(id) + 1} 位）</span>${team.length > 1 ? `<button class="btn" data-rest="${id}">💤 休息</button>` : '<span class="note">至少要有 1 位上場</span>'}</div>`;
+          else if (team.length < PARTY_MAX) pickBtn = `<button class="btn blue" data-pick="${id}">⚔️ 上場</button>`;
+          else pickBtn = '<span class="note">隊伍已經 3 位了，先讓一位休息才能換上場</span>';
+        }
         return `<div class="ccard win ${have ? '' : 'locked'}"><img src="${imgOf(id)}" alt=""><div class="body">
           <div class="title">${c.name}<span class="type ${c.type}">${TYPE_NAME[c.type]}</span>${have && partyIds().includes(id) ? ' ⚔️' : ''}</div>
           <div class="note">${esc(c.desc)}</div>${prog}
           <div class="growth">${c.tiers.map((lv, t) => `<figure class="${have && st.lv >= lv ? '' : 'lock'}"><img src="${c.img(t + 1)}" alt=""><figcaption>Lv.${lv}</figcaption></figure>`).join('')}</div>
           ${pickBtn}</div></div>`;
       }).join('')}</div>`;
-    page.querySelectorAll('[data-pick]').forEach((b) => b.onclick = () => { S.clozePick = b.dataset.pick; persist(); B = null; renderBar(); });
+    // 換隊伍後回到冒險，show('battle') 會發現隊伍變了，重新開這一關
+    page.querySelectorAll('[data-pick]').forEach((b) => b.onclick = () => { const p = partyIds(); if (p.length < PARTY_MAX) { S.party = p.concat(b.dataset.pick); persist(); beep(660, 'triangle', 0.1); } renderBar(); });
+    page.querySelectorAll('[data-rest]').forEach((b) => b.onclick = () => { const p = partyIds(); if (p.length > 1) { S.party = p.filter((x) => x !== b.dataset.rest); persist(); } renderBar(); });
   }
 
   /* ========================================================
@@ -978,8 +994,7 @@
       // 正在作答：這一題馬上給答案
       if (inBattle() && !B.busy && B.mode) {
         S.hintCharges--; persist();
-        const c = CH[B.party[B.turn].id];
-        ({ spell: askSpell, talk: askTalk, cloze: askCloze })[c.type](true);
+        ({ spell: askSpell, talk: askTalk, cloze: askCloze })[B.mode](true);   // 同一種題型直接給答案
       } else if (inBattle() && !B.busy) showCommands();
       return;
     }
@@ -1055,6 +1070,13 @@
   // 解鎖門檻調低時，已經有足夠星星的存檔一打開就解鎖
   Object.keys(CH).forEach((id) => { if (!S.unlocked.includes(id) && S.points >= CH[id].unlock) S.unlocked.push(id); });
   S.unlocked.forEach((id) => { if (!S.chars[id]) S.chars[id] = { lv: 1, exp: 0 }; });
+  // 舊存檔沒有自選隊伍：照以前的規則（勇者、魔法使、填空角色）排好
+  if (!Array.isArray(S.party)) {
+    const old = ['hero', 'mage', S.unlocked.includes(S.clozePick) ? S.clozePick : 'shield', 'angel'];
+    S.party = old.filter((id, i, a) => S.unlocked.includes(id) && a.indexOf(id) === i).slice(0, PARTY_MAX);
+  }
+  // 解鎖了但隊伍還有空位：補上
+  S.unlocked.forEach((id) => { const p = partyIds(); if (!p.includes(id) && p.length < PARTY_MAX) S.party = p.concat(id); });
   $('#points').innerText = S.points;
   $('#chip-sound').innerText = soundOn ? '🔊' : '🔇';
   $('#chip-music').style.opacity = Music.on ? 1 : 0.4;

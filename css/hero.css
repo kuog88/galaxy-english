@@ -188,6 +188,7 @@ select.grade {
 .type.spell { background: #2b6cb0; }
 .type.talk { background: #8a3fb8; }
 .type.cloze { background: #2f855a; }
+.type.mixed { background: linear-gradient(90deg, #2b6cb0, #2f855a); }
 .prog { height: 8px; background: #000; border-radius: 4px; overflow: hidden; border: 1px solid #556; }
 .prog i { display: block; height: 100%; background: linear-gradient(90deg, #4a7dff, #7fe3ff); }
 .growth { display: flex; gap: 4px; overflow-x: auto; padding-top: 2px; }

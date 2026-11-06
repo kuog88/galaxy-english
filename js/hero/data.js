@@ -289,7 +289,7 @@ window.HERO_DATA = (function () {
     },
   ];
 
-  // 角色：type = spell（拼單字）／talk（文法對話）／cloze（句型填空）
+  // 角色：type = spell（拼單字）／talk（文法對話）／cloze（句型填空）／mixed（每次隨機：拼單字或句型填空）
   // tiers = 換外觀的等級；img(t) = 第 t 階圖片
   const CHARS = {
     hero: {
@@ -308,9 +308,9 @@ window.HERO_DATA = (function () {
       desc: '答對句型填空題攻擊；會挺身替隊友擋下攻擊，受到的傷害較少',
     },
     angel: {
-      name: '墮天使', type: 'cloze', unlock: 200, hp: 45, hpUp: 6, atk: 14, atkUp: 2, aoe: true, noFalloff: true,
+      name: '墮天使', type: 'mixed', unlock: 200, hp: 45, hpUp: 6, atk: 14, atkUp: 2, aoe: true, noFalloff: true,
       tiers: [1, 3, 6, 9, 12, 15], img: (t) => `assets/hero/c-angel-${t}.webp`, weapon: 'greatsword',
-      desc: '答對句型填空題，巨劍攻擊全部怪物，傷害不減弱（2 翼 → 12 翼）',
+      desc: '每次隨機考單字拼字或句型填空，巨劍攻擊全部怪物，傷害不減弱（2 翼 → 12 翼）',
     },
   };
 
