@@ -1052,6 +1052,8 @@
   load();
   if (!GR[S.grade - 1] || !GR[S.grade - 1].stages.length) S.grade = 1;
   S.lost = S.lost || {}; S.bag = Object.assign({ heal: 0, hint: 0, demon: 0 }, S.bag); S.hintCharges = S.hintCharges || 0;
+  // 解鎖門檻調低時，已經有足夠星星的存檔一打開就解鎖
+  Object.keys(CH).forEach((id) => { if (!S.unlocked.includes(id) && S.points >= CH[id].unlock) S.unlocked.push(id); });
   S.unlocked.forEach((id) => { if (!S.chars[id]) S.chars[id] = { lv: 1, exp: 0 }; });
   $('#points').innerText = S.points;
   $('#chip-sound').innerText = soundOn ? '🔊' : '🔇';

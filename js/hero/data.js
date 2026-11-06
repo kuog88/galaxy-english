@@ -303,12 +303,12 @@ window.HERO_DATA = (function () {
       desc: '答對文法對話題，魔法攻擊全部怪物（起始傷害較低）',
     },
     shield: {
-      name: '盾戰士', type: 'cloze', unlock: 200, hp: 60, hpUp: 8, atk: 9, atkUp: 1.5, aoe: false, guard: true,
+      name: '盾戰士', type: 'cloze', unlock: 150, hp: 60, hpUp: 8, atk: 9, atkUp: 1.5, aoe: false, guard: true,
       tiers: [1, 3, 5, 7, 9, 11, 13], img: (t) => `assets/hero/c-shield-${t}.webp`, weapon: 'shield',
       desc: '答對句型填空題攻擊；會挺身替隊友擋下攻擊，受到的傷害較少',
     },
     angel: {
-      name: '墮天使', type: 'cloze', unlock: 300, hp: 45, hpUp: 6, atk: 14, atkUp: 2, aoe: true, noFalloff: true,
+      name: '墮天使', type: 'cloze', unlock: 200, hp: 45, hpUp: 6, atk: 14, atkUp: 2, aoe: true, noFalloff: true,
       tiers: [1, 3, 6, 9, 12, 15], img: (t) => `assets/hero/c-angel-${t}.webp`, weapon: 'greatsword',
       desc: '答對句型填空題，巨劍攻擊全部怪物，傷害不減弱（2 翼 → 12 翼）',
     },
