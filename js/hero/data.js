@@ -342,5 +342,5 @@ window.HERO_DATA = (function () {
   // 武器圖：assets/hero/w-<種類>-<1~10>.webp
   const weaponImg = (kind, i) => `assets/hero/w-${kind}-${i + 1}.webp`;
 
-  return { GRADES, CHARS, WEAPONS, weaponImg, UNLOCK_NOTE: '第一次就答對 +1、每鍛造一把武器 +1' };
+  return { GRADES, CHARS, WEAPONS, weaponImg, UNLOCK_NOTE: '第一次就答對 +1、每鍛造一把武器 +1、寶箱有 10% 機會掉 1 顆' };
 })();

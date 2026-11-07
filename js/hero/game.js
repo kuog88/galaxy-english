@@ -161,6 +161,7 @@
   };
   /* ---------- 藥水：每一關約 5% 會從寶箱掉一瓶 ---------- */
   const POTION_RATE = 0.05;
+  const STAR_RATE = 0.1;                      // 每個寶箱掉 1 顆解鎖星星的機率
   const POTIONS = {
     heal: { name: '回復藥水', icon: '❤️', w: 40, desc: '全隊 HP 回滿（不會超過最大 HP），隨時都能喝' },
     hint: { name: '提示藥水', icon: '💡', w: 40, desc: '喝下去，接下來 2 題直接告訴你答案' },
@@ -652,10 +653,17 @@
     }
     got.forEach((c) => { S.letters[c] = (S.letters[c] || 0) + 1; });
     S.gold += gold;
+    // 每個寶箱 10% 機會多掉 1 顆解鎖星星（可能因此解鎖新夥伴，結算時會顯示）
+    const star = Math.random() < STAR_RATE;
+    if (star) B.unlocks.push(...addPoint());
     persist();
     coinSfx(m.boss);
     const pt = point(m.el);
     J.floatText(fx, pt.x, pt.y - 20, '+ ' + got.join(' ') + (gold ? '  ★1' : ''), 'loot');
+    if (star) {
+      setTimeout(() => { J.floatText(fx, pt.x, pt.y - 45, '⭐ +1', 'crit'); beep(1319, 'triangle', 0.2, 0.15); }, 250);
+      note('⭐ 寶箱裡有一顆<b>解鎖星星</b>！');
+    }
     if (m.potion) {
       const po = POTIONS[m.potion];
       S.bag[m.potion] = (S.bag[m.potion] || 0) + 1;
