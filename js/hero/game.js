@@ -158,10 +158,12 @@
     lost: {},                                 // 每位角色少了多少血（帶到下一關）
     bag: { heal: 0, hint: 0, demon: 0 },      // 背包裡的藥水
     hintCharges: 0,                           // 提示藥水剩幾次
+    endless: { floor: 1, best: 0 },           // 無限迴廊：現在在第幾層、最高紀錄
   };
   /* ---------- 藥水：每一關約 5% 會從寶箱掉一瓶 ---------- */
   const POTION_RATE = 0.05;
-  const STAR_RATE = 0.1;                      // 每個寶箱掉 1 顆解鎖星星的機率
+  const ENDLESS_BOSS_EVERY = 10;              // 無限迴廊：每 10 層一個魔王，打倒就是存檔點
+  const STAR_RATE = 0.1;                     // 每個寶箱掉 1 顆解鎖星星的機率
   const POTIONS = {
     heal: { name: '回復藥水', icon: '❤️', w: 40, desc: '全隊 HP 回滿（不會超過最大 HP），隨時都能喝' },
     hint: { name: '提示藥水', icon: '💡', w: 40, desc: '喝下去，接下來 2 題直接告訴你答案' },
@@ -251,37 +253,44 @@
     if (!g.stages.length) return say('這個年級的題目還在準備中（第二階段開放）。');
     si = Math.max(0, Math.min(si, g.stages.length - 1));
     if (!stageOpen(S.grade, si)) si = nextStageIdx();
-    const stage = g.stages[si], boss = si === g.stages.length - 1;
+    const endless = !!g.endless, floor = endless ? S.endless.floor : 0;
+    const stage = g.stages[si], boss = endless ? floor % ENDLESS_BOSS_EVERY === 0 : si === g.stages.length - 1;
     const words = shuffle(stage.words);
     const n = 1 + Math.floor(Math.random() * 3);
+    // 無限迴廊：從小四的強度開始，每往下一層怪物就再強一點
+    const baseHp = endless ? Math.round(MON_HP[5] * (0.6 + 0.04 * floor)) : MON_HP[gi];
+    const baseAtk = endless ? Math.round(MON_ATK[5] * (0.6 + 0.03 * floor)) : MON_ATK[gi];
     const mons = [];
     for (let k = 0; k < n; k++) {
       const isBoss = boss && k === 0;
       const w = words[k % words.length];
-      const max = isBoss ? MON_HP[gi] * 3 : MON_HP[gi];
+      const max = isBoss ? baseHp * 3 : baseHp;
       mons.push({
         word: w[0], ch: w[1], hp: max, max, boss: isBoss,
-        atk: Math.round(MON_ATK[gi] * (isBoss ? 1.6 : 1)),
-        img: isBoss ? `assets/hero/m-boss-${g.boss}.webp` : `assets/hero/m-${pick(g.sheet)}-${1 + Math.floor(Math.random() * 9)}.webp`,
+        atk: Math.round(baseAtk * (isBoss ? 1.6 : 1)),
+        img: isBoss ? `assets/hero/m-boss-${endless ? pick(g.bosses) : g.boss}.webp` : `assets/hero/m-${pick(g.sheet)}-${1 + Math.floor(Math.random() * 9)}.webp`,
       });
     }
     if (boss && mons.length > 1) mons.splice(1, 0, mons.shift()); // 魔王站中間
     // 血量會帶到下一關；魔王關開打前全員回滿
     if (boss) S.lost = {};
     B = {
-      si, stage, boss, mons, grade: S.grade, key: stageKey(S.grade, si), first: !S.cleared[stageKey(S.grade, si)],
+      si, stage, boss, mons, grade: S.grade, key: stageKey(S.grade, si), first: endless || !S.cleared[stageKey(S.grade, si)],
+      endless, floor,
       party: partyIds().map((id) => { const max = statHp(id); return { id, max, hp: Math.max(0, max - Math.min(max, S.lost[id] || 0)), def: false }; }),
       turn: 0, target: 0, busy: true, over: false, mode: null, unlocks: [],
     };
     // 倒下的夥伴帶著 1 點血進場，免得一開場就只剩一個人
     B.party.forEach((p) => { if (p.hp <= 0) p.hp = 1; });
     syncHp();
-    $('#field-bg').style.backgroundImage = `url("${g.bg}")`;
+    $('#field-bg').style.backgroundImage = `url("${endless ? g.bgs[Math.floor((floor - 1) / ENDLESS_BOSS_EVERY) % g.bgs.length] : g.bg}")`;
     $('#game').classList.remove('asking');
     Music.play(boss ? 'boss' : 'bgm');
-    $('#stage-tag').innerText = `${boss ? '👑 魔王 ' : ''}小${'一二三四五六'[gi]} 第 ${si + 1} 關・${stage.name}${B.first ? '' : '（複習：獎勵較少）'}`;
+    $('#stage-tag').innerText = endless
+      ? `${boss ? '👑 魔王 ' : ''}♾️ 無限迴廊 第 ${floor} 層・最高紀錄 ${S.endless.best} 層`
+      : `${boss ? '👑 魔王 ' : ''}小${'一二三四五六'[gi]} 第 ${si + 1} 關・${stage.name}${B.first ? '' : '（複習：獎勵較少）'}`;
     $('#stage-tag').classList.toggle('boss', boss);
-    $('#stage-num').innerText = `${S.grade}-${si + 1}`;
+    $('#stage-num').innerText = endless ? `♾️${floor}` : `${S.grade}-${si + 1}`;
     renderMonsters(true);
     renderParty();
     say(msg || `${boss ? '👑 魔王關！隊伍 HP 全部回滿了。<br>' : ''}<b>${esc(mons.map((m) => shortCh(m.ch) + '怪').join('、'))}</b> 出現了！`);
@@ -680,7 +689,8 @@
     if (!b || b.mode !== 'loot') return;
     b.mode = 'done';
     const gi = b.grade - 1;
-    let exp = b.mons.reduce((s, m) => s + (m.boss ? 50 : 10) * (gi + 1), 0);
+    const expMul = b.endless ? 6 + Math.floor(b.floor / ENDLESS_BOSS_EVERY) : gi + 1;
+    let exp = b.mons.reduce((s, m) => s + (m.boss ? 50 : 10) * expMul, 0);
     if (!b.first) exp = Math.max(1, Math.round(exp / 5));   // 複習關卡：經驗只有 1/5
     const ups = [];
     b.party.forEach((p) => {
@@ -691,14 +701,18 @@
       while (st.exp >= expNeed(st.lv)) { st.exp -= expNeed(st.lv); st.lv++; up = true; }
       if (up) ups.push({ id: p.id, lv: st.lv, evolved: tierOf(p.id) > t0 });
     });
-    if (b.first) S.cleared[b.key] = true;
+    if (b.endless) {
+      // 無限迴廊：往下一層，順便更新最高紀錄
+      S.endless.best = Math.max(S.endless.best, b.floor);
+      S.endless.floor = b.floor + 1;
+    } else if (b.first) S.cleared[b.key] = true;
     // 過關休息：每個人回復「損失血量」的一半，下一關帶著剩下的血繼續
     let healed = 0;
     b.party.forEach((p) => { const lost = p.max - p.hp, back = Math.ceil(lost / 2); healed += back; S.lost[p.id] = lost - back; });
     persist();
     if (B !== b) return;                      // 已經去別關了：只記錄，不跳結算視窗
     const g = GR[b.grade - 1], last = b.si === g.stages.length - 1;
-    const nextBoss = b.si + 1 === g.stages.length - 1;
+    const nextBoss = b.endless ? (b.floor + 1) % ENDLESS_BOSS_EVERY === 0 : b.si + 1 === g.stages.length - 1;
     let html = `<h2>${b.boss ? '👑 擊敗魔王！' : '🎉 勝利！'}</h2><p class="note">隊伍獲得 ${exp} 點經驗值${b.first ? '' : '<br>（已通過的關卡：字母只掉 1/3、經驗只有 1/5，去挑戰新關卡獎勵比較多！）'}</p>`;
     html += `<p class="note">${nextBoss ? '👑 下一關是魔王！開打前全員 HP 回滿。' : healed ? `❤️ 休息一下：回復了損失 HP 的一半（共 ${healed}），剩下的傷要帶到下一關喔！` : '❤️ 隊伍沒有受傷，太厲害了！'}</p>`;
     ups.forEach((u) => {
@@ -710,8 +724,12 @@
       html += `<div style="margin:10px 0"><img class="pop-img" src="${imgOf(id)}" alt=""><div style="color:#7fe3ff;font-weight:900">🎊 新夥伴 ${CH[id].name} 加入了！</div><p class="note">${esc(CH[id].desc)}</p></div>`;
     });
     let next = b.si + 1 < g.stages.length ? b.si + 1 : 0, nextLabel = '下一關 ▶';
-    const toNextGrade = last && b.first && b.grade < GR.length && GR[b.grade].stages.length;
-    if (toNextGrade) nextLabel = `前往小${'一二三四五六'[b.grade]} ▶`;
+    const toNextGrade = !b.endless && last && b.first && b.grade < GR.length && GR[b.grade].stages.length;
+    if (b.endless) {
+      next = 0;
+      nextLabel = `往下走：第 ${b.floor + 1} 層 ▶`;
+      if (b.floor % ENDLESS_BOSS_EVERY === 0) html += `<p class="note" style="color:var(--gold)">💾 到達存檔點！之後全滅會從第 ${b.floor + 1} 層重新開始。</p>`;
+    } else if (toNextGrade) nextLabel = GR[b.grade].endless ? '🎓 全部畢業！前往 ♾️ 無限迴廊 ▶' : `前往小${'一二三四五六'[b.grade]} ▶`;
     else if (last && b.first) nextLabel = '回到第 1 關複習 ▶';
     html += `<button class="btn" id="go-next" style="margin-top:12px">${nextLabel}</button>`;
     showModal(html);
@@ -727,7 +745,14 @@
     b.over = true; b.mode = 'wipe';
     await sleep(400);
     if (B !== b) return;
-    showModal(`<h2 style="color:var(--red)">💀 全滅了…</h2><p class="note" style="margin:6px 0 12px">別灰心！收集到的字母都還在。<br>回到營火休息，HP 全滿再挑戰一次吧！</p><button class="btn" id="retry">🔥 重新挑戰</button>`);
+    // 無限迴廊全滅：退回最近的存檔點（第 1、11、21… 層）
+    let extra = '';
+    if (b.endless) {
+      const cp = Math.floor((b.floor - 1) / ENDLESS_BOSS_EVERY) * ENDLESS_BOSS_EVERY + 1;
+      S.endless.floor = cp; persist();
+      extra = `<br>這次打到第 <b>${b.floor}</b> 層（最高紀錄 ${S.endless.best} 層）。<br>退回存檔點：第 <b>${cp}</b> 層。`;
+    }
+    showModal(`<h2 style="color:var(--red)">💀 全滅了…</h2><p class="note" style="margin:6px 0 12px">別灰心！收集到的字母都還在。${extra}<br>回到營火休息，HP 全滿再挑戰一次吧！</p><button class="btn" id="retry">🔥 重新挑戰</button>`);
     $('#retry').onclick = () => { closeModal(); S.lost = {}; persist(); startStage(b.si); };
   }
 
@@ -1038,12 +1063,24 @@
     const reach = reachedGrade();
     $('#grade').innerHTML = GR.map((g, i) => {
       const ok = g.stages.length && g.grade <= reach;
-      return `<option value="${g.grade}" ${g.grade === S.grade ? 'selected' : ''} ${ok ? '' : 'disabled'}>${g.name}${g.stages.length ? (ok ? '' : '（打倒前一年級魔王）') : '（第二階段）'}</option>`;
+      const lockNote = g.endless ? '（打倒小六魔王後開放）' : '（打倒前一年級魔王）';
+      return `<option value="${g.grade}" ${g.grade === S.grade ? 'selected' : ''} ${ok ? '' : 'disabled'}>${g.name}${g.stages.length ? (ok ? '' : lockNote) : '（第二階段）'}</option>`;
     }).join('');
   }
   $('#grade').onchange = (e) => { S.grade = +e.target.value; persist(); show('battle'); startStage(nextStageIdx()); };
   $('#chip-stage').onclick = () => {
     const g = G();
+    if (g.endless) {
+      const f = S.endless.floor, cp = Math.floor((f - 1) / ENDLESS_BOSS_EVERY) * ENDLESS_BOSS_EVERY + 1;
+      const n = g.stages[0].words.length;
+      showModal(`<h2>♾️ 無限迴廊</h2>
+        <p class="note">小一～小六全部的題目（單字 ${n} 個、文法對話 ${g.talk.length} 題、句型填空 ${g.cloze.length} 題）隨機出題，一層一層往下打，越下面怪物越強。</p>
+        <p>現在：第 <b style="color:var(--gold)">${f}</b> 層・最高紀錄 <b style="color:var(--gold)">${S.endless.best}</b> 層</p>
+        <p class="note">👑 每 ${ENDLESS_BOSS_EVERY} 層有一隻魔王（開打前 HP 回滿），打倒就是存檔點。<br>全滅會退回存檔點：現在是第 ${cp} 層。</p>
+        <button class="btn" id="m-close" style="margin-top:12px">關閉</button>`);
+      $('#m-close').onclick = closeModal;
+      return;
+    }
     showModal(`<h2>🗺️ ${esc(g.name)}</h2><div class="stage-list">${g.stages.map((st, i) => {
       const done = S.cleared[stageKey(S.grade, i)], open = stageOpen(S.grade, i);
       return `<button class="cmd" data-st="${i}" ${open ? '' : 'disabled style="opacity:.4"'}>${S.grade}-${i + 1} ${esc(st.name)}${i === g.stages.length - 1 ? ' 👑' : ''}<small>${done ? '✅ 已過關（複習獎勵較少）' : open ? '⚔️ 挑戰' : `🔒 先通過第 ${i} 關`}</small></button>`;
@@ -1074,6 +1111,8 @@
   /* ---------- 啟動 ---------- */
   load();
   if (!GR[S.grade - 1] || !GR[S.grade - 1].stages.length) S.grade = 1;
+  S.endless = Object.assign({ floor: 1, best: 0 }, S.endless);
+  if (S.grade > reachedGrade()) S.grade = reachedGrade();
   S.lost = S.lost || {}; S.bag = Object.assign({ heal: 0, hint: 0, demon: 0 }, S.bag); S.hintCharges = S.hintCharges || 0;
   // 解鎖門檻調低時，已經有足夠星星的存檔一打開就解鎖
   Object.keys(CH).forEach((id) => { if (!S.unlocked.includes(id) && S.points >= CH[id].unlock) S.unlocked.push(id); });

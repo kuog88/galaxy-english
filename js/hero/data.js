@@ -289,6 +289,17 @@ window.HERO_DATA = (function () {
     },
   ];
 
+  // ♾️ 無限迴廊：打倒小六魔王後開放。小一～小六全部的單字、對話、填空混在一起隨機出題，一層一層往下打
+  GRADES.push({
+    grade: 7, name: '♾️ 無限迴廊（小一～小六全部）', endless: true,
+    sheet: [...new Set(GRADES.flatMap((g) => g.sheet))],
+    bgs: GRADES.map((g) => g.bg),
+    bosses: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    stages: [{ name: '無限迴廊', words: GRADES.flatMap((g) => g.stages.flatMap((s) => s.words)) }],
+    talk: GRADES.flatMap((g) => g.talk),
+    cloze: GRADES.flatMap((g) => g.cloze),
+  });
+
   // 角色：type = spell（拼單字）／talk（文法對話）／cloze（句型填空）／mixed（每次隨機：拼單字或句型填空）
   // tiers = 換外觀的等級；img(t) = 第 t 階圖片
   const CHARS = {
