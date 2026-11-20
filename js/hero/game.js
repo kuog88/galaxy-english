@@ -159,6 +159,8 @@
     bag: { heal: 0, hint: 0, demon: 0 },      // 背包裡的藥水
     hintCharges: 0,                           // 提示藥水剩幾次
     endless: { floor: 1, best: 0 },           // 無限迴廊：現在在第幾層、最高紀錄
+    words: {}, dexClaimed: 0,                 // 單字熟練度、圖鑑獎勵領到第幾個
+    daily: null, streak: { days: 0, last: '' }, name: '',
   };
   /* ---------- 藥水：每一關約 5% 會從寶箱掉一瓶 ---------- */
   const POTION_RATE = 0.05;
@@ -196,6 +198,38 @@
   const defPct = (id) => (CH[id].guard ? Math.min(70, 20 + ((weaponOf(id) || {}).def || 0)) : 0);
   const expNeed = (lv) => 20 + lv * 15;
   const G = () => GR[S.grade - 1];
+
+  /* ---------- 單字熟練度：S.words[字] = { seen 見過, ok 第一次就拼對的次數, s 連續拼對幾場(0~3), m 學會, r 復仇名單, bad 拼錯次數 } ---------- */
+  const MASTER_AT = 3;                        // 連續 3 場戰鬥第一次就拼對 = 學會
+  const REVENGE_RATE = 0.4;                   // 有復仇名單時，每隻怪有 40% 機會是復仇怪
+  const WINFO = {};                           // 字 → { ch 中文, grade 年級 }
+  GR.filter((g) => !g.endless).forEach((g) => g.stages.forEach((st) => st.words.forEach(([w, ch]) => { if (!WINFO[w]) WINFO[w] = { ch, grade: g.grade }; })));
+  const ALL_WORDS = Object.keys(WINFO);
+  const wstat = (w) => S.words[w] || {};
+  const wordLevel = (w) => { const st = wstat(w); return st.m ? 3 : st.ok ? 2 : st.seen ? 1 : 0; };   // 0 沒見過／1 見過／2 答對過／3 學會
+  const revengeList = (maxGrade = 6) => ALL_WORDS.filter((w) => wstat(w).r && WINFO[w].grade <= maxGrade);
+  const canListen = () => soundOn && 'speechSynthesis' in window;
+  // 一場戰鬥裡同一個字只算一次：第一次就拼對 → 熟練度 +1；拼錯 → 歸零並進復仇名單
+  function recordWord(word, ok) {
+    if (!B || !WINFO[word]) return '';
+    B.wres = B.wres || {};
+    const st = S.words[word] || (S.words[word] = {});
+    let msg = '';
+    if (ok) {
+      if (B.wres[word]) return '';
+      B.wres[word] = 'ok';
+      st.ok = (st.ok || 0) + 1;
+      st.s = Math.min(MASTER_AT, (st.s || 0) + 1);
+      if (st.r) { delete st.r; msg = '💢 復仇成功！'; }
+      if (st.s >= MASTER_AT && !st.m) { st.m = 1; msg += '⭐ 學會了！圖鑑變金框'; } else if (!st.m) msg += `熟練度 ${st.s}/${MASTER_AT}`;
+    } else {
+      if (B.wres[word] === 'bad') return '';
+      B.wres[word] = 'bad';
+      st.s = 0; st.r = 1; st.bad = (st.bad || 0) + 1;
+    }
+    persist();
+    return msg;
+  }
   const stageKey = (g, i) => `g${g}-${i + 1}`;
   // 打倒某年級魔王，下一個年級才開放
   function reachedGrade() {
@@ -255,7 +289,11 @@
     if (!stageOpen(S.grade, si)) si = nextStageIdx();
     const endless = !!g.endless, floor = endless ? S.endless.floor : 0;
     const stage = g.stages[si], boss = endless ? floor % ENDLESS_BOSS_EVERY === 0 : si === g.stages.length - 1;
-    const words = shuffle(stage.words);
+    // 學會的字比較少出現（權重 0.3），把時間留給還不會的字
+    const words = stage.words.map((w) => { const st = wstat(w[0]); return { w, k: Math.pow(Math.random(), 1 / (st.m && !st.r ? 0.3 : 1)) }; })
+      .sort((a, b) => b.k - a.k).map((x) => x.w);
+    // 復仇名單：以前拼錯的字（這個年級以下的）會變成復仇怪回來
+    const revPool = shuffle(revengeList(endless ? 6 : S.grade));
     const n = 1 + Math.floor(Math.random() * 3);
     // 無限迴廊：從小四的強度開始，每往下一層怪物就再強一點
     const baseHp = endless ? Math.round(MON_HP[5] * (0.6 + 0.04 * floor)) : MON_HP[gi];
@@ -263,10 +301,17 @@
     const mons = [];
     for (let k = 0; k < n; k++) {
       const isBoss = boss && k === 0;
-      const w = words[k % words.length];
+      let w = words[k % words.length], revenge = false;
+      if (!isBoss && revPool.length && Math.random() < REVENGE_RATE) {
+        const rw = revPool.pop();
+        if (!mons.some((m) => m.word === rw)) { w = [rw, WINFO[rw].ch]; revenge = true; }
+      }
+      const st = S.words[w[0]] || (S.words[w[0]] = {});
+      st.seen = 1;
       const max = isBoss ? baseHp * 3 : baseHp;
       mons.push({
-        word: w[0], ch: w[1], hp: max, max, boss: isBoss,
+        word: w[0], ch: w[1], hp: max, max, boss: isBoss, revenge,
+        listen: !st.r && (st.m || (st.s || 0) >= 2),     // 快學會的字：聽寫怪（不給中文）
         atk: Math.round(baseAtk * (isBoss ? 1.6 : 1)),
         img: isBoss ? `assets/hero/m-boss-${endless ? pick(g.bosses) : g.boss}.webp` : `assets/hero/m-${pick(g.sheet)}-${1 + Math.floor(Math.random() * 9)}.webp`,
       });
@@ -293,7 +338,7 @@
     $('#stage-num').innerText = endless ? `♾️${floor}` : `${S.grade}-${si + 1}`;
     renderMonsters(true);
     renderParty();
-    say(msg || `${boss ? '👑 魔王關！隊伍 HP 全部回滿了。<br>' : ''}<b>${esc(mons.map((m) => shortCh(m.ch) + '怪').join('、'))}</b> 出現了！`);
+    say(msg || `${boss ? '👑 魔王關！隊伍 HP 全部回滿了。<br>' : ''}<b>${esc(mons.map(monName).join('、'))}</b> 出現了！${mons.some((m) => m.revenge) ? '<br>💢 復仇怪：以前拼錯的字回來了，打倒牠字母加倍！' : ''}`);
     const b = B;
     setTimeout(() => { if (B === b) { b.busy = false; beginTurn(); } }, 900);
   }
@@ -315,15 +360,18 @@
   /* ---------- 畫面 ---------- */
   // 怪物名字只放簡短中文（括號說明、分號後的第二個意思省略），完整意思留在題目上
   const shortCh = (ch) => ch.replace(/（.*?）/g, '').split('；')[0];
+  // 聽寫怪不顯示中文（關掉聲音時沒辦法聽，就照常顯示）；復仇怪前面加 💢
+  const isListen = (m) => m.listen && canListen();
+  const monName = (m) => (m.revenge ? '💢' : '') + (isListen(m) ? '🎧？？？' : shortCh(m.ch)) + '怪';
   function renderMonsters(enter) {
     const box = $('#monsters');
     box.innerHTML = '';
     B.mons.forEach((m, i) => {
       const el = document.createElement('div');
-      el.className = 'mon' + (m.boss ? ' boss' : '') + (m.chest ? ' chest' : '') + (m.opened ? ' opened' : '')
+      el.className = 'mon' + (m.boss ? ' boss' : '') + (m.revenge && !m.chest ? ' revenge' : '') + (m.chest ? ' chest' : '') + (m.opened ? ' opened' : '')
         + (!m.chest && i === B.target && !B.over ? ' target' : '');
       const src = m.chest ? `assets/hero/p-chest-${m.boss ? 'gold' : 'wood'}${m.opened ? '-open' : ''}.webp` : m.img;
-      el.innerHTML = `<img src="${src}" alt=""><span class="tag">${m.chest ? (m.opened ? '已打開' : (m.boss ? '✨ 金寶箱' : '寶箱')) : esc(shortCh(m.ch)) + '怪'}</span>`
+      el.innerHTML = `<img src="${src}" alt=""><span class="tag">${m.chest ? (m.opened ? '已打開' : (m.boss ? '✨ 金寶箱' : m.revenge ? '💢 雙倍寶箱' : '寶箱')) : esc(monName(m))}</span>`
         + (m.chest ? '' : `<span class="bar"><i style="width:${(m.hp / m.max) * 100}%"></i></span>`);
       el.onclick = () => (m.chest ? openChest(m) : chooseTarget(i));
       box.appendChild(el);
@@ -428,18 +476,24 @@
     const p = B.party[B.turn], mon = B.mons[B.target];
     B.mode = 'spell';
     $('#game').classList.add('asking');
-    B.q = { word: mon.word, pos: 0, wrong: 0, tries: reveal || p.sawAnswer ? 1 : 0, revealed: !!reveal };
-    const tiles = shuffle(mon.word.split('').concat([pick('bcdfghklmnprstw'), pick('aeiou')]));
+    // 難度跟著熟練度走：新字 2 個干擾字母；答對過 4 個；快學會的字變聽寫（只念發音、不給中文）
+    const st = wstat(mon.word), known = (st.s || 0) >= 1 || st.m;
+    const listen = isListen(mon) && !reveal;
+    B.q = { word: mon.word, ch: mon.ch, pos: 0, wrong: 0, tries: reveal || p.sawAnswer ? 1 : 0, revealed: !!reveal, listen };
+    const decoys = [pick('bcdfghklmnprstw'), pick('aeiou')];
+    if (known && !reveal) decoys.push(pick('bcdfghjklmnprstvwy'), pick('aeiou'));
+    const tiles = shuffle(mon.word.split('').concat(decoys));
     const hint = reveal ? `🛡️ 正確拼法：<b style="font-size:1.2rem;letter-spacing:3px">${esc(mon.word)}</b>`
       : (alive().length > 1 ? '點上面的怪物可以換攻擊目標' : '');
-    con.innerHTML = `<div class="row"><div class="msg"><b>${CH[p.id].name}</b>：拼出「<b>${esc(mon.ch)}</b>」攻擊！</div><span><button class="small-btn" id="say">🔊</button> ${backBtn}</span></div>
+    const ask = listen ? '🎧 <b>聽寫</b>：聽發音，拼出這個字！' : `拼出「<b>${esc(mon.ch)}</b>」攻擊！`;
+    con.innerHTML = `<div class="row"><div class="msg"><b>${CH[p.id].name}</b>：${ask}</div><span><button class="small-btn" id="say">🔊</button> ${backBtn}</span></div>
       <div class="slots">${mon.word.split('').map((_, i) => `<span class="slot${i ? '' : ' active'}"></span>`).join('')}</div>
       <div class="hint" id="hint">${hint}</div>
       <div class="keys">${tiles.map((ch) => `<button class="key">${ch}</button>`).join('')}</div>`;
     $('#say').onclick = () => speak(mon.word);
     bindBack();
     con.querySelectorAll('.key').forEach((k) => k.onclick = () => pressKey(k));
-    if (reveal) speak(mon.word);
+    if (reveal || listen) speak(mon.word);
   }
   async function pressKey(k) {
     if (B.busy || B.over || B.mode !== 'spell') return;
@@ -450,10 +504,19 @@
       slots[q.pos].innerText = ch; slots[q.pos].classList.add('filled'); slots[q.pos].classList.remove('active');
       q.pos++; q.wrong = 0; $('#hint').innerText = '';
       if (q.pos < q.word.length) slots[q.pos].classList.add('active');
-      else { B.busy = true; speak(q.word); await answered(q.tries === 0); }
+      else {
+        B.busy = true; speak(q.word);
+        const m = q.tries === 0 ? recordWord(q.word, true) : '';
+        if (q.tries === 0 && (B.wres || {})[q.word] !== 'bad') dailyAdd('words', q.word);   // 這場拼錯過的字不算
+        B.wordNote = `✅ ${q.word} ＝ ${q.ch}${m ? '　' + m : ''}`;   // 攻擊訊息裡一起顯示
+        $('#hint').innerText = B.wordNote;
+        await answered(q.tries === 0);
+      }
     } else {
       q.wrong++; q.tries++;
-      if (q.wrong === 1) { $('#hint').innerText = '💡 提示：聽聽看發音，再想想下一個字母'; speak(q.word); }
+      recordWord(q.word, false);
+      if (q.wrong === 1 && q.listen) { $('#hint').innerText = `💡 提示：這個字的意思是「${q.ch}」`; speak(q.word); }
+      else if (q.wrong === 1) { $('#hint').innerText = '💡 提示：聽聽看發音，再想想下一個字母'; speak(q.word); }
       else {
         $('#hint').innerText = `💡 提示：下一個字母是「${need}」`;
         const key = [...con.querySelectorAll('.key:not(.used)')].find((x) => x.innerText === need);
@@ -512,11 +575,33 @@
   }
 
   async function answered(firstTry) {
-    if (firstTry) B.unlocks.push(...addPoint());
+    if (firstTry) {
+      B.unlocks.push(...addPoint());
+      dailyAdd('first');
+      setCombo(combo + 1);          // 連續第一次就答對 → 連擊（看答案作答不加也不斷）
+    }
     await sleep(350);
     await doAttack(B.party[B.turn].id);
   }
+  /* ---------- 連擊：每 1 連擊傷害 +5%，最多 +50%；答錯歸零 ---------- */
+  let combo = 0;
+  const COMBO_STEP = 0.05, COMBO_MAX = 10;
+  const comboMul = () => 1 + Math.min(combo, COMBO_MAX) * COMBO_STEP;
+  function setCombo(n) {
+    const up = n > combo;
+    combo = n;
+    const el = $('#combo');
+    el.hidden = combo < 2;
+    if (combo >= 2) {
+      el.innerHTML = `🔥 ${combo} 連擊<small>傷害 +${Math.round((comboMul() - 1) * 100)}%</small>`;
+      el.classList.toggle('max', combo >= COMBO_MAX);
+      if (up) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); beep(520 + Math.min(combo, COMBO_MAX) * 60, 'triangle', 0.12, 0.1); }
+    }
+    if (S.daily && combo > (S.daily.combo || 0)) S.daily.combo = combo;
+  }
   async function wrongAnswer() {
+    if (combo >= 2) note(`💥 ${combo} 連擊中斷了…`);
+    setCombo(0);
     beep(150, 'sawtooth', 0.25, 0.18);
     B.busy = true;
     const b = B;
@@ -533,13 +618,16 @@
     fx.style.setProperty('--c', color);
     const main = b.mons[b.target] && b.mons[b.target].hp > 0 ? b.mons[b.target] : alive()[0];
     const targets = c.aoe ? alive() : [main];
-    say(`<b>${c.name}</b> 的攻擊！${tier ? `（${esc(WP[c.weapon][wi].name)}）` : ''}`);
+    const wordNote = b.wordNote ? `<br><span class="note">${esc(b.wordNote)}</span>` : '';
+    b.wordNote = '';
+    say(`<b>${c.name}</b> 的攻擊！${tier ? `（${esc(WP[c.weapon][wi].name)}）` : ''}${combo >= 2 ? ` 🔥 ${combo} 連擊！` : ''}${wordNote}`);
     if (lvl >= 5) await cutIn(D.weaponImg(c.weapon, wi), WP[c.weapon][wi].name, color);
     if (B !== b) return;
     p.el.animate([{ transform: 'translateY(-6px)' }, { transform: 'translateY(-40px) scale(1.08)' }, { transform: 'translateY(-6px)' }], { duration: 420, easing: 'ease-in-out' });
     await sleep(200);
     if (lvl >= 3) flashTint(color, lvl >= 4 ? 0.55 : 0.3);
-    const base = statAtk(id);
+    const base = statAtk(id) * comboMul();
+    if (combo >= 5) flashTint('#ffb347', 0.25);
     await Promise.all(targets.map((m, i) => {
       let d = base * (0.9 + Math.random() * 0.2);
       if (c.aoe && !c.noFalloff && m !== main) d *= 0.7;       // 魔法使：其他怪物傷害 70%
@@ -624,7 +712,7 @@
     victim.hp = Math.max(0, victim.hp - dmg);
     syncHp();
     beep(200, 'sawtooth', 0.2, 0.2);
-    note(`<b>${esc(shortCh(mon.ch))}怪</b> 的攻擊！${guarded ? '<b>盾戰士</b> 挺身擋下！' : ''}<b>${CH[victim.id].name}</b> 受到 ${dmg} 點傷害${victim.hp <= 0 ? '，倒下了…' : (mult < 1 ? '（防禦中，傷害減半）' : '。再試一次！')}`);
+    note(`<b>${esc(monName(mon))}</b> 的攻擊！${guarded ? '<b>盾戰士</b> 挺身擋下！' : ''}<b>${CH[victim.id].name}</b> 受到 ${dmg} 點傷害${victim.hp <= 0 ? '，倒下了…' : (mult < 1 ? '（防禦中，傷害減半）' : '。再試一次！')}`);
     renderParty();
     const pt = point(victim.el);
     J.floatText(fx, pt.x, pt.y - 30, '-' + dmg, 'ouch');
@@ -653,6 +741,7 @@
     m.el.querySelector('img').src = `assets/hero/p-chest-${m.boss ? 'gold' : 'wood'}-open.webp`;
     m.el.querySelector('.tag').innerText = '已打開';
     let got = m.word.toLowerCase().split('');              // 背包裡的字母一律存小寫
+    if (m.revenge) got = got.concat(got);                  // 復仇怪：字母加倍
     if (m.boss) for (let i = 0; i < 3; i++) got.push(pick('abcdefghiklmnoprstuwy'));
     let gold = m.boss ? 1 : 0;
     // 已通過的關卡再打一次：字母只剩 1/3、金字母只有 1/3 的機會（避免一直刷簡單關）
@@ -701,6 +790,7 @@
       while (st.exp >= expNeed(st.lv)) { st.exp -= expNeed(st.lv); st.lv++; up = true; }
       if (up) ups.push({ id: p.id, lv: st.lv, evolved: tierOf(p.id) > t0 });
     });
+    dailyAdd('wins');
     if (b.endless) {
       // 無限迴廊：往下一層，順便更新最高紀錄
       S.endless.best = Math.max(S.endless.best, b.floor);
@@ -751,9 +841,20 @@
       const cp = Math.floor((b.floor - 1) / ENDLESS_BOSS_EVERY) * ENDLESS_BOSS_EVERY + 1;
       S.endless.floor = cp; persist();
       extra = `<br>這次打到第 <b>${b.floor}</b> 層（最高紀錄 ${S.endless.best} 層）。<br>退回存檔點：第 <b>${cp}</b> 層。`;
+      // 登記排行榜：取個名字（最多 8 個字），同一個名字只留最高紀錄
+      extra += `</p><div class="row" style="margin:8px 0;justify-content:center"><input id="rank-name" maxlength="8" placeholder="你的名字" value="${esc(S.name || '')}" style="width:9em;padding:6px 8px;border-radius:8px;border:2px solid #889;background:#0d1430;color:#fff;font-size:1rem">
+        <button class="btn blue" id="rank-save">🏆 登記排行榜</button></div><div id="rank-box"></div><p class="note">`;
     }
+    setCombo(0);
     showModal(`<h2 style="color:var(--red)">💀 全滅了…</h2><p class="note" style="margin:6px 0 12px">別灰心！收集到的字母都還在。${extra}<br>回到營火休息，HP 全滿再挑戰一次吧！</p><button class="btn" id="retry">🔥 重新挑戰</button>`);
     $('#retry').onclick = () => { closeModal(); S.lost = {}; persist(); startStage(b.si); };
+    const rs = $('#rank-save');
+    if (rs) rs.onclick = () => {
+      const name = $('#rank-name').value.trim().slice(0, 8) || '勇者';
+      rankAdd(name, b.floor);
+      rs.disabled = true; rs.innerText = '✅ 已登記';
+      $('#rank-box').innerHTML = rankHtml(name);
+    };
   }
 
   /* ========================================================
@@ -967,9 +1068,10 @@
   function closeModal() { $('#modal').style.display = 'none'; }
 
   function show(scene) {
-    ['battle', 'forge', 'bar'].forEach((s) => { $(`#scene-${s}`).hidden = s !== scene; $(`#nav-${s}`).classList.toggle('active', s === scene); });
+    ['battle', 'forge', 'bar', 'dex'].forEach((s) => { $(`#scene-${s}`).hidden = s !== scene; $(`#nav-${s}`).classList.toggle('active', s === scene); });
     if (scene === 'forge') renderForge();
     if (scene === 'bar') renderBar();
+    if (scene === 'dex') renderDex();
     if (scene === 'battle') {
       // 隊伍或裝備變了：重新開這一關
       const ids = partyIds().join();
@@ -982,6 +1084,7 @@
   $('#nav-forge').onclick = () => show('forge');
   $('#nav-bar').onclick = () => show('bar');
   $('#nav-bag').onclick = () => openBag();
+  $('#nav-dex').onclick = () => show('dex');
 
   /* ========================================================
      背包：藥水
@@ -993,6 +1096,7 @@
     // 鍛造屋：有武器可以做就亮紅點；夥伴：有角色可以升級外觀/解鎖時提示
     const canForge = Object.keys(CH).some((id) => S.unlocked.includes(id) && WP[CH[id].weapon].some((w, i) => !S.owned[CH[id].weapon].includes(i) && w.words && recipeState(w).ready));
     $('#nav-forge').classList.toggle('alert', canForge);
+    const rv = revengeList().length, dc = $('#dex-count'); dc.innerText = rv; dc.hidden = !rv;
   }
   function openBag() {
     const rows = Object.keys(POTIONS).map((k) => {
@@ -1077,6 +1181,7 @@
         <p class="note">小一～小六全部的題目（單字 ${n} 個、文法對話 ${g.talk.length} 題、句型填空 ${g.cloze.length} 題）隨機出題，一層一層往下打，越下面怪物越強。</p>
         <p>現在：第 <b style="color:var(--gold)">${f}</b> 層・最高紀錄 <b style="color:var(--gold)">${S.endless.best}</b> 層</p>
         <p class="note">👑 每 ${ENDLESS_BOSS_EVERY} 層有一隻魔王（開打前 HP 回滿），打倒就是存檔點。<br>全滅會退回存檔點：現在是第 ${cp} 層。</p>
+        <h3 style="margin-top:10px">🏆 排行榜</h3>${rankHtml(S.name)}
         <button class="btn" id="m-close" style="margin-top:12px">關閉</button>`);
       $('#m-close').onclick = closeModal;
       return;
@@ -1090,7 +1195,145 @@
     document.querySelectorAll('[data-st]').forEach((b) => b.onclick = () => { if (b.disabled) return; closeModal(); show('battle'); startStage(+b.dataset.st); });
   };
 
+  /* ========================================================
+     單字圖鑑：396 個字的熟練度、復仇名單、收集獎勵
+     ======================================================== */
+  let dexTab = null;
+  const DEX_STEP = 10;                        // 每學會 10 個字領一次獎勵
+  function dexCounts() {
+    const c = { total: ALL_WORDS.length, seen: 0, ok: 0, m: 0, r: 0 };
+    ALL_WORDS.forEach((w) => { const lv = wordLevel(w); if (lv >= 1) c.seen++; if (lv >= 2) c.ok++; if (lv >= 3) c.m++; if (wstat(w).r) c.r++; });
+    return c;
+  }
+  function renderDex() {
+    const page = $('#dex-page'), c = dexCounts();
+    if (dexTab == null) dexTab = Math.min(6, S.grade);
+    const list = dexTab === 'r' ? revengeList() : ALL_WORDS.filter((w) => WINFO[w].grade === dexTab);
+    const claimable = Math.floor(c.m / DEX_STEP) - (S.dexClaimed || 0);
+    const nextAt = ((S.dexClaimed || 0) + 1) * DEX_STEP;
+    page.innerHTML = `<h3>📖 單字圖鑑</h3>
+      <div class="win" style="padding:10px 12px;margin-bottom:8px">
+        <div>⭐ 學會 <b style="color:var(--gold)">${c.m}</b> / ${c.total}　✅ 答對過 ${c.ok}　👀 見過 ${c.seen}　💢 復仇名單 ${c.r}</div>
+        <div class="prog" style="margin:6px 0"><i style="width:${(c.m / c.total) * 100}%"></i></div>
+        <div class="note">連續 ${MASTER_AT} 場戰鬥「第一次就拼對」就算學會（金框）。拼錯的字會進復仇名單，變成 💢 復仇怪回來，打倒牠字母加倍。</div>
+        <div class="row" style="margin-top:6px"><span class="note">🎁 每學會 ${DEX_STEP} 個字：★ 金字母 ×1（每 50 個再送一瓶藥水）</span>
+          ${claimable > 0 ? `<button class="btn fire" id="dex-claim">領取 ×${claimable}</button>` : `<span class="note">下一個獎勵：${c.m} / ${nextAt}</span>`}</div>
+      </div>
+      <div class="tabs">${[1, 2, 3, 4, 5, 6].map((g) => `<button class="tab ${dexTab === g ? 'on' : ''}" data-dg="${g}">小${'一二三四五六'[g - 1]}</button>`).join('')}<button class="tab ${dexTab === 'r' ? 'on' : ''}" data-dg="r">💢 復仇 ${c.r}</button></div>
+      <div class="dex-grid">${list.length ? list.map((w) => {
+        const lv = wordLevel(w), st = wstat(w);
+        const pips = lv === 3 ? '⭐ 學會' : lv === 0 ? '還沒遇到' : '●'.repeat(st.s || 0) + '○'.repeat(MASTER_AT - (st.s || 0));
+        return `<button class="dcard lv${lv}${st.r ? ' rev' : ''}" data-w="${esc(w)}"><b>${lv ? esc(w) : '？？？'}</b><span>${lv ? esc(shortCh(WINFO[w].ch)) : ''}</span><small>${st.r ? '💢 ' : ''}${pips}</small></button>`;
+      }).join('') : '<p class="note">復仇名單是空的，太厲害了！</p>'}</div>`;
+    page.querySelectorAll('[data-dg]').forEach((b) => b.onclick = () => { dexTab = b.dataset.dg === 'r' ? 'r' : +b.dataset.dg; renderDex(); });
+    page.querySelectorAll('[data-w]').forEach((b) => b.onclick = () => { if (wordLevel(b.dataset.w)) speak(b.dataset.w); });
+    const cl = $('#dex-claim');
+    if (cl) cl.onclick = () => {
+      let gold = 0; const pots = [];
+      while (Math.floor(dexCounts().m / DEX_STEP) > (S.dexClaimed || 0)) {
+        S.dexClaimed = (S.dexClaimed || 0) + 1; gold++;
+        if ((S.dexClaimed * DEX_STEP) % 50 === 0) { const k = rollPotion(); S.bag[k]++; pots.push(POTIONS[k]); }
+      }
+      S.gold += gold; persist(); coinSfx(true);
+      showModal(`<h2>🎁 圖鑑獎勵</h2><p>★ 金字母 ×${gold}</p>${pots.map((p) => `<p>${p.icon} ${p.name} ×1</p>`).join('')}<button class="btn" id="m-close" style="margin-top:12px">太棒了！</button>`);
+      $('#m-close').onclick = () => { closeModal(); renderDex(); };
+    };
+  }
+
+  /* ========================================================
+     每日任務：3 個小任務 → 每日寶箱；連續天數越多寶箱越好
+     ======================================================== */
+  const DAILY = [
+    { k: 'first', need: 20, text: '第一次就答對 20 題' },
+    { k: 'wins', need: 5, text: '打贏 5 場戰鬥' },
+    { k: 'words', need: 8, text: '第一次就拼對 8 個不同的單字' },
+  ];
+  const dayStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const today = () => dayStr(new Date());
+  function daily() {
+    if (!S.daily || S.daily.date !== today()) S.daily = { date: today(), first: 0, wins: 0, words: [], claimed: false };
+    return S.daily;
+  }
+  const dailyVal = (t) => { const d = daily(); return Math.min(t.need, t.k === 'words' ? d.words.length : d[t.k] || 0); };
+  const dailyDone = () => DAILY.filter((t) => dailyVal(t) >= t.need).length;
+  function dailyAdd(k, v) {
+    const d = daily(), before = dailyDone();
+    if (k === 'words') { if (!d.words.includes(v)) d.words.push(v); } else d[k] = (d[k] || 0) + 1;
+    persist();
+    updateDailyChip(dailyDone() > before);
+  }
+  function updateDailyChip(pop) {
+    const el = $('#daily-chip'), d = daily(), n = dailyDone();
+    const ready = n >= DAILY.length && !d.claimed;
+    el.innerText = d.claimed ? '✅ 今日完成' : ready ? '🎁 領每日寶箱' : `📅 任務 ${n}/${DAILY.length}`;
+    el.classList.toggle('ready', ready);
+    el.classList.toggle('done', !!d.claimed);
+    if (pop) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); beep(880, 'triangle', 0.15, 0.12); setTimeout(() => beep(1175, 'triangle', 0.2, 0.12), 120); }
+  }
+  // 現在領的話是連續第幾天
+  function streakIfClaim() {
+    const s = S.streak || { days: 0, last: '' };
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    return s.last === today() ? s.days : s.last === dayStr(y) ? s.days + 1 : 1;
+  }
+  const dailyReward = (days) => ({ letters: 8 + 2 * Math.min(days, 7), gold: 1, potion: days % 3 === 0, stars: days % 7 === 0 ? 3 : 0 });
+  const rewardText = (r) => `字母 ×${r.letters}、★ 金字母 ×${r.gold}${r.potion ? '、🧪 藥水 ×1' : ''}${r.stars ? `、⭐ 星星 ×${r.stars}` : ''}`;
+  function openDaily() {
+    const d = daily(), n = dailyDone(), days = streakIfClaim(), r = dailyReward(days);
+    const kept = (S.streak || {}).days || 0;
+    const rows = DAILY.map((t) => {
+      const v = dailyVal(t), ok = v >= t.need;
+      return `<div class="bag-row win"><span class="ico">${ok ? '✅' : '⬜'}</span><div class="body"><b>${t.text}</b><div class="prog"><i style="width:${(v / t.need) * 100}%"></i></div></div><span class="note">${v}/${t.need}</span></div>`;
+    }).join('');
+    let foot;
+    if (d.claimed) foot = `<p style="color:var(--gold);font-weight:900;margin-top:10px">🎉 今天的冒險完成了！</p><p class="note">已經連續 ${kept} 天。明天再來，寶箱會更好：${rewardText(dailyReward(kept + 1))}</p>`;
+    else if (n >= DAILY.length) foot = `<p class="note" style="margin-top:10px">🔥 連續第 ${days} 天！寶箱裡有：${rewardText(r)}</p><button class="btn fire" id="d-claim" style="margin-top:8px">🎁 打開每日寶箱</button>`;
+    else foot = `<p class="note" style="margin-top:10px">三個都完成就能開每日寶箱（連續第 ${days} 天：${rewardText(r)}）。<br>每 3 天多一瓶藥水，每 7 天多 3 顆星星；中斷一天會從第 1 天重新算。</p>`;
+    showModal(`<h2>📅 每日任務</h2><div class="bag-list">${rows}</div>${foot}<button class="btn blue" id="m-close" style="margin-top:12px">關閉</button>`);
+    $('#m-close').onclick = closeModal;
+    const cb = $('#d-claim');
+    if (cb) cb.onclick = () => {
+      if (d.claimed) return;
+      d.claimed = true;
+      S.streak = { days, last: today() };
+      const got = [];
+      for (let i = 0; i < r.letters; i++) { const ch = pick('aaabcdeeefghiiklmnnoooprrssttuwy'); S.letters[ch] = (S.letters[ch] || 0) + 1; got.push(ch); }
+      S.gold += r.gold;
+      let pot = null;
+      if (r.potion) { const k = rollPotion(); S.bag[k]++; pot = POTIONS[k]; }
+      const fresh = [];
+      for (let i = 0; i < r.stars; i++) fresh.push(...addPoint());
+      persist(); updateDailyChip(); coinSfx(true);
+      showModal(`<h2>🎁 每日寶箱</h2><p class="note">🔥 連續 ${days} 天</p><p style="letter-spacing:2px">${got.sort().join(' ')}</p><p>★ 金字母 ×${r.gold}</p>
+        ${pot ? `<p>${pot.icon} ${pot.name} ×1</p>` : ''}${r.stars ? `<p>⭐ 星星 ×${r.stars}</p>` : ''}
+        ${fresh.map((id) => `<p style="color:#7fe3ff;font-weight:900">🎊 新夥伴 ${CH[id].name} 加入了！</p>`).join('')}
+        <p style="color:var(--gold);font-weight:900;margin-top:8px">今天的冒險完成了，明天再來！</p><button class="btn" id="m-close" style="margin-top:12px">好</button>`);
+      $('#m-close').onclick = closeModal;
+    };
+  }
+  $('#daily-chip').onclick = openDaily;
+
+  /* ========================================================
+     無限迴廊排行榜（存在這台裝置上，兄弟姊妹、同學可以各取名字比賽）
+     ======================================================== */
+  const RANK_KEY = 'word_hero_rank';
+  function rankLoad() { try { const a = JSON.parse(localStorage.getItem(RANK_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+  function rankAdd(name, floor) {
+    name = String(name || '').trim().slice(0, 8) || '勇者';
+    const list = rankLoad(), old = list.find((x) => x.name === name);
+    if (old) { if (floor > old.floor) { old.floor = floor; old.date = today(); } } else list.push({ name, floor, date: today() });
+    list.sort((a, b) => b.floor - a.floor);
+    try { localStorage.setItem(RANK_KEY, JSON.stringify(list.slice(0, 20))); } catch (e) {}
+    S.name = name; persist();
+  }
+  function rankHtml(mark) {
+    const list = rankLoad().slice(0, 10);
+    if (!list.length) return '<p class="note">排行榜還沒有紀錄。在無限迴廊倒下時可以登記名字。</p>';
+    return `<div class="rank">${list.map((x, i) => `<div class="${x.name === mark ? 'me' : ''}"><span>${['🥇', '🥈', '🥉'][i] || i + 1}</span><b>${esc(x.name)}</b><span>第 ${x.floor} 層</span></div>`).join('')}</div>`;
+  }
+
   window.addEventListener('keydown', (e) => {
+    if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
     if (!B || B.busy || B.over || $('#scene-battle').hidden || $('#modal').style.display === 'flex') return;
     if (B.mode === 'spell') {
       const k = e.key.toLowerCase();
@@ -1112,6 +1355,7 @@
   load();
   if (!GR[S.grade - 1] || !GR[S.grade - 1].stages.length) S.grade = 1;
   S.endless = Object.assign({ floor: 1, best: 0 }, S.endless);
+  S.words = S.words || {}; S.dexClaimed = S.dexClaimed || 0;
   if (S.grade > reachedGrade()) S.grade = reachedGrade();
   S.lost = S.lost || {}; S.bag = Object.assign({ heal: 0, hint: 0, demon: 0 }, S.bag); S.hintCharges = S.hintCharges || 0;
   // 解鎖門檻調低時，已經有足夠星星的存檔一打開就解鎖
@@ -1129,7 +1373,8 @@
   $('#chip-music').style.opacity = Music.on ? 1 : 0.4;
   setupGrades();
   persist();
+  updateDailyChip();
   startStage(nextStageIdx());
 
-  window.__hero = { get S() { return S; }, get B() { return B; }, addPoint, startStage, show, Music, speak, hitSfx, anvilSfx, coinSfx, usePotion, openBag }; // 測試用
+  window.__hero = { get S() { return S; }, get B() { return B; }, addPoint, startStage, show, Music, speak, hitSfx, anvilSfx, coinSfx, usePotion, openBag, recordWord, setCombo, openDaily, rankAdd, get combo() { return combo; } }; // 測試用
 })();
